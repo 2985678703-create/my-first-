@@ -1,0 +1,1619 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MAP</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.min.js"></script>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: #0a0a0c;
+            font-family: 'Share Tech Mono', monospace;
+        }
+        
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        
+        /* Industrial UI Overlay */
+        .ui-overlay {
+            position: fixed;
+            z-index: 100;
+            pointer-events: none;
+        }
+        
+        /* Top Left - Title & Status */
+        .ui-top-left {
+            top: 20px;
+            left: 20px;
+        }
+        
+        .title-badge {
+            background: linear-gradient(135deg, rgba(192,192,192,0.15) 0%, rgba(20,20,25,0.95) 100%);
+            border: 1px solid rgba(192,192,192,0.4);
+            padding: 15px 25px;
+            clip-path: polygon(0 0, calc(100% - 15px) 0, 100% 15px, 100% 100%, 15px 100%, 0 calc(100% - 15px));
+            position: relative;
+        }
+        
+        .title-badge::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, #c0c0c0, transparent);
+        }
+        
+        .title-badge h1 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 900;
+            color: #ffffff;
+            text-shadow: 0 0 20px rgba(255,255,255,0.5);
+            letter-spacing: 3px;
+        }
+        
+        .title-badge .subtitle {
+            font-size: 0.7rem;
+            color: rgba(255,255,255,0.5);
+            letter-spacing: 5px;
+            margin-top: 5px;
+        }
+        
+        /* Triangle decorations */
+        .tri-icon {
+            width: 0;
+            height: 0;
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-bottom: 14px solid #c0c0c0;
+            display: inline-block;
+            margin-right: 10px;
+            filter: drop-shadow(0 0 5px rgba(192,192,192,0.8));
+        }
+        
+        /* Status Panel */
+        .status-panel {
+            margin-top: 15px;
+            background: rgba(10,10,15,0.9);
+            border-left: 2px solid #c0c0c0;
+            padding: 10px 15px;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+            font-size: 0.75rem;
+            color: rgba(255,255,255,0.7);
+        }
+        
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            background: #ffffff;
+            border-radius: 50%;
+            margin-right: 10px;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-dot.warning {
+            background: #c0c0c0;
+        }
+        
+        .status-dot.inactive {
+            background: #444;
+            animation: none;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; box-shadow: 0 0 5px currentColor; }
+            50% { opacity: 0.5; box-shadow: none; }
+        }
+        
+        /* Top Right - Data Display */
+        .ui-top-right {
+            top: 20px;
+            right: 20px;
+        }
+        
+        .data-panel {
+            background: rgba(10,10,15,0.9);
+            border: 1px solid rgba(192,192,192,0.3);
+            padding: 15px;
+            min-width: 200px;
+            clip-path: polygon(15px 0, 100% 0, 100% calc(100% - 15px), calc(100% - 15px) 100%, 0 100%, 0 15px);
+        }
+        
+        .data-panel-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(192,192,192,0.2);
+        }
+        
+        .data-panel-header span {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.8rem;
+            color: #c0c0c0;
+            letter-spacing: 2px;
+        }
+        
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            font-size: 0.7rem;
+        }
+        
+        .data-label {
+            color: rgba(255,255,255,0.4);
+        }
+        
+        .data-value {
+            color: #ffffff;
+            font-family: 'Orbitron', sans-serif;
+        }
+        
+        /* Bottom Left - Hand Tracking */
+        .ui-bottom-left {
+            bottom: 20px;
+            left: 20px;
+        }
+        
+        .hand-panel {
+            background: rgba(10,10,15,0.95);
+            border: 1px solid rgba(192,192,192,0.3);
+            padding: 10px;
+            position: relative;
+        }
+        
+        .hand-panel::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 20px;
+            width: 0;
+            height: 0;
+            border-left: 10px solid transparent;
+            border-right: 10px solid transparent;
+            border-top: 10px solid rgba(192,192,192,0.3);
+        }
+        
+        #video-container {
+            width: 160px;
+            height: 120px;
+            background: #000;
+            border: 1px solid rgba(192,192,192,0.2);
+            overflow: hidden;
+            position: relative;
+        }
+        
+        #video-container video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+            opacity: 0.8;
+        }
+        
+        #video-container canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1);
+        }
+        
+        .scan-line {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: rgba(255,255,255,0.5);
+            animation: scanMove 2s linear infinite;
+        }
+        
+        @keyframes scanMove {
+            0% { top: 0; }
+            100% { top: 100%; }
+        }
+        
+        /* Bottom Right - Controls */
+        .ui-bottom-right {
+            bottom: 20px;
+            right: 20px;
+        }
+        
+        .control-panel {
+            background: rgba(10,10,15,0.9);
+            border: 1px solid rgba(192,192,192,0.3);
+            padding: 15px;
+            pointer-events: auto;
+        }
+        
+        .control-btn {
+            display: flex;
+            align-items: center;
+            background: rgba(192,192,192,0.1);
+            border: 1px solid rgba(192,192,192,0.4);
+            color: #c0c0c0;
+            padding: 8px 15px;
+            margin: 5px 0;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.75rem;
+            letter-spacing: 1px;
+        }
+        
+        .control-btn:hover {
+            background: rgba(255,255,255,0.2);
+            box-shadow: 0 0 15px rgba(255,255,255,0.3);
+            color: #ffffff;
+        }
+        
+        .control-btn.active {
+            background: rgba(255,255,255,0.3);
+            box-shadow: inset 0 0 10px rgba(255,255,255,0.3);
+            color: #ffffff;
+        }
+        
+        /* Corner Decorations */
+        .corner-deco {
+            position: fixed;
+            width: 50px;
+            height: 50px;
+            border: 2px solid rgba(192,192,192,0.3);
+            z-index: 99;
+        }
+        
+        .corner-deco.tl {
+            top: 10px;
+            left: 10px;
+            border-right: none;
+            border-bottom: none;
+        }
+        
+        .corner-deco.tr {
+            top: 10px;
+            right: 10px;
+            border-left: none;
+            border-bottom: none;
+        }
+        
+        .corner-deco.bl {
+            bottom: 10px;
+            left: 10px;
+            border-right: none;
+            border-top: none;
+        }
+        
+        .corner-deco.br {
+            bottom: 10px;
+            right: 10px;
+            border-left: none;
+            border-top: none;
+        }
+        
+        /* Crosshair */
+        .crosshair {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 50;
+            pointer-events: none;
+        }
+        
+        .crosshair-inner {
+            width: 40px;
+            height: 40px;
+            border: 1px solid rgba(255,255,255,0.5);
+            transform: rotate(45deg);
+            position: relative;
+        }
+        
+        .crosshair-inner::before,
+        .crosshair-inner::after {
+            content: '';
+            position: absolute;
+            background: rgba(255,255,255,0.5);
+        }
+        
+        .crosshair-inner::before {
+            width: 1px;
+            height: 60px;
+            left: 50%;
+            top: -10px;
+            transform: translateX(-50%);
+        }
+        
+        .crosshair-inner::after {
+            width: 60px;
+            height: 1px;
+            top: 50%;
+            left: -10px;
+            transform: translateY(-50%);
+        }
+        
+        /* Loading Screen */
+        #loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #0a0a0c;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.5s;
+        }
+        
+        #loading-screen.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        
+        .loading-logo {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2rem;
+            color: #ffffff;
+            letter-spacing: 10px;
+            margin-bottom: 30px;
+        }
+        
+        .loading-bar {
+            width: 200px;
+            height: 2px;
+            background: rgba(255,255,255,0.1);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .loading-bar::after {
+            content: '';
+            position: absolute;
+            left: -50%;
+            width: 50%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, #ffffff, transparent);
+            animation: loading 1.5s infinite;
+        }
+        
+        @keyframes loading {
+            0% { left: -50%; }
+            100% { left: 100%; }
+        }
+        
+        .loading-text {
+            margin-top: 20px;
+            font-size: 0.7rem;
+            color: rgba(255,255,255,0.4);
+            letter-spacing: 3px;
+        }
+        
+        /* Hand cursor indicator */
+        #hand-cursor {
+            position: fixed;
+            width: 30px;
+            height: 30px;
+            border: 2px solid #ffffff;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 200;
+            opacity: 0;
+            transition: opacity 0.2s, transform 0.1s;
+            box-shadow: 0 0 20px rgba(255,255,255,0.5);
+        }
+        
+        #hand-cursor.visible {
+            opacity: 1;
+        }
+        
+        #hand-cursor.fist {
+            transform: scale(0.5);
+            background: rgba(192,192,192,0.5);
+        }
+        
+        #hand-cursor.open {
+            transform: scale(1.5);
+            border-color: #ffffff;
+        }
+        
+        /* Zoom indicator */
+        .zoom-indicator {
+            position: fixed;
+            bottom: 160px;
+            left: 20px;
+            background: rgba(10,10,15,0.9);
+            border: 1px solid rgba(192,192,192,0.3);
+            padding: 10px 15px;
+            z-index: 100;
+            pointer-events: none;
+        }
+        
+        .zoom-bar {
+            width: 100px;
+            height: 6px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+        
+        .zoom-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #c0c0c0, #ffffff);
+            border-radius: 3px;
+            transition: width 0.3s;
+        }
+        
+        /* Audio Player */
+        .audio-panel {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(10,10,15,0.95);
+            border: 1px solid rgba(192,192,192,0.4);
+            padding: 15px 25px;
+            z-index: 100;
+            pointer-events: auto;
+            clip-path: polygon(15px 0, calc(100% - 15px) 0, 100% 15px, 100% calc(100% - 15px), calc(100% - 15px) 100%, 15px 100%, 0 calc(100% - 15px), 0 15px);
+        }
+        
+        .audio-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .audio-header span {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.7rem;
+            color: #c0c0c0;
+            letter-spacing: 2px;
+        }
+        
+        .audio-controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .audio-btn {
+            width: 40px;
+            height: 40px;
+            border: 1px solid rgba(192,192,192,0.4);
+            background: rgba(255,255,255,0.1);
+            color: #ffffff;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            font-size: 1.2rem;
+        }
+        
+        .audio-btn:hover {
+            background: rgba(255,255,255,0.2);
+            box-shadow: 0 0 10px rgba(255,255,255,0.3);
+        }
+        
+        .audio-btn.playing {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        .audio-visualizer {
+            display: flex;
+            align-items: flex-end;
+            gap: 2px;
+            height: 30px;
+        }
+        
+        .audio-bar {
+            width: 4px;
+            background: linear-gradient(to top, #c0c0c0, #ffffff);
+            transition: height 0.1s;
+        }
+        
+        .audio-progress {
+            width: 150px;
+            height: 4px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 2px;
+            cursor: pointer;
+            position: relative;
+        }
+        
+        .audio-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #c0c0c0, #ffffff);
+            border-radius: 2px;
+            width: 0%;
+        }
+        
+        .audio-time {
+            font-size: 0.65rem;
+            color: rgba(255,255,255,0.5);
+            min-width: 70px;
+            text-align: center;
+        }
+        
+        /* File input styling */
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .file-input-wrapper input[type="file"] {
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            cursor: pointer;
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* Gesture Guide */
+        .gesture-guide {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(192,192,192,0.2);
+        }
+        
+        .gesture-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.6rem;
+            color: rgba(255,255,255,0.5);
+            margin: 4px 0;
+        }
+        
+        .gesture-icon {
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div id="loading-screen">
+        <div class="loading-logo">GPS TERRAIN</div>
+        <div class="loading-bar"></div>
+        <div class="loading-text">INITIALIZING MAP SYSTEM</div>
+    </div>
+
+    <!-- Corner Decorations -->
+    <div class="corner-deco tl"></div>
+    <div class="corner-deco tr"></div>
+    <div class="corner-deco bl"></div>
+    <div class="corner-deco br"></div>
+
+    <!-- Crosshair -->
+    <div class="crosshair">
+        <div class="crosshair-inner"></div>
+    </div>
+
+    <!-- Hand Cursor -->
+    <div id="hand-cursor"></div>
+
+    <!-- 3D Canvas Container -->
+    <div id="canvas-container"></div>
+
+    <!-- UI Overlays -->
+    <div class="ui-overlay ui-top-left">
+        <div class="title-badge">
+            <h1><span class="tri-icon"></span>MAP</h1>
+            <div class="subtitle">GPS TERRAIN NAVIGATOR v3.0</div>
+        </div>
+        <div class="status-panel">
+            <div class="status-item">
+                <div class="status-dot" id="status-render"></div>
+                <span>RENDER ENGINE: ACTIVE</span>
+            </div>
+            <div class="status-item">
+                <div class="status-dot inactive" id="status-hand"></div>
+                <span id="hand-status-text">HAND TRACKING: OFFLINE</span>
+            </div>
+            <div class="status-item">
+                <div class="status-dot warning"></div>
+                <span>PARTICLES: <span id="particle-count">0</span></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="ui-overlay ui-top-right">
+        <div class="data-panel">
+            <div class="data-panel-header">
+                <span class="tri-icon"></span>
+                <span>MAP DATA</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">REGION</span>
+                <span class="data-value">THAILAND</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">ZOOM</span>
+                <span class="data-value" id="zoom-level">1.0x</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">ELEVATION</span>
+                <span class="data-value" id="elevation">0.00 M</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">GESTURE</span>
+                <span class="data-value" id="current-gesture">NONE</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">FPS</span>
+                <span class="data-value" id="fps">60</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">TIME</span>
+                <span class="data-value" id="time-display">00:00:00</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="ui-overlay ui-bottom-left">
+        <div class="zoom-indicator">
+            <div style="font-size: 0.7rem; color: #c0c0c0; letter-spacing: 2px;">◢ ZOOM LEVEL</div>
+            <div class="zoom-bar">
+                <div class="zoom-fill" id="zoom-fill" style="width: 50%;"></div>
+            </div>
+        </div>
+        
+        <div class="hand-panel" style="margin-top: 15px;">
+            <div style="font-size: 0.7rem; color: #c0c0c0; margin-bottom: 5px; letter-spacing: 2px;">◢ GESTURE INPUT</div>
+            <div id="video-container">
+                <video id="video" playsinline></video>
+                <canvas id="hand-canvas"></canvas>
+                <div class="scan-line"></div>
+            </div>
+            <div style="font-size: 0.6rem; color: rgba(255,255,255,0.4); margin-top: 5px;">
+                GESTURE: <span id="gesture-type" style="color: #ffffff;">NONE</span>
+            </div>
+            <div class="gesture-guide">
+                <div class="gesture-item"><span class="gesture-icon">🖐️</span> Open Hand = Zoom In</div>
+                <div class="gesture-item"><span class="gesture-icon">✊</span> Fist = Zoom Out</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="ui-overlay ui-bottom-right">
+        <div class="control-panel">
+            <div style="font-size: 0.7rem; color: #c0c0c0; margin-bottom: 10px; letter-spacing: 2px;">◢ CONTROLS</div>
+            <button class="control-btn active" id="btn-particles">◢ PARTICLES</button>
+            <button class="control-btn" id="btn-contours">◢ CONTOURS</button>
+            <button class="control-btn" id="btn-hand">◢ ENABLE HAND</button>
+            
+            <div style="margin-top: 15px; border-top: 1px solid rgba(192,192,192,0.2); padding-top: 10px;">
+                <div style="font-size: 0.7rem; color: #c0c0c0; margin-bottom: 10px; letter-spacing: 2px;">◢ GIS DATA IMPORT</div>
+                <div class="file-input-wrapper">
+                    <button class="control-btn" style="width: 100%">📂 IMPORT DEM (GRAY)</button>
+                    <input type="file" id="input-dem" accept="image/*">
+                </div>
+                <div class="file-input-wrapper">
+                    <button class="control-btn" style="width: 100%">🎨 IMPORT SAT (COLOR)</button>
+                    <input type="file" id="input-sat" accept="image/*">
+                </div>
+                <div style="font-size: 0.6rem; color: rgba(255,255,255,0.4); margin-top: 5px; line-height: 1.2;">
+                    * Supports processed ArcMap exports
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Audio Player Panel -->
+    <div class="audio-panel">
+        <div class="audio-header">
+            <span class="tri-icon" style="transform: scale(0.6);"></span>
+            <span>AUDIO NAVIGATOR</span>
+        </div>
+        <div class="audio-controls">
+            <div class="file-input-wrapper">
+                <button class="audio-btn" id="btn-load" title="Load Audio">📁</button>
+                <input type="file" id="audio-file" accept="audio/*">
+            </div>
+            <button class="audio-btn" id="btn-prev" title="Previous">⏮</button>
+            <button class="audio-btn" id="btn-play" title="Play/Pause">▶</button>
+            <button class="audio-btn" id="btn-next" title="Next">⏭</button>
+            <div class="audio-visualizer" id="audio-visualizer">
+                <div class="audio-bar" style="height: 5px;"></div>
+                <div class="audio-bar" style="height: 10px;"></div>
+                <div class="audio-bar" style="height: 15px;"></div>
+                <div class="audio-bar" style="height: 8px;"></div>
+                <div class="audio-bar" style="height: 20px;"></div>
+                <div class="audio-bar" style="height: 12px;"></div>
+                <div class="audio-bar" style="height: 18px;"></div>
+                <div class="audio-bar" style="height: 6px;"></div>
+            </div>
+            <div class="audio-progress" id="audio-progress">
+                <div class="audio-progress-fill" id="audio-progress-fill"></div>
+            </div>
+            <div class="audio-time" id="audio-time">00:00 / 00:00</div>
+        </div>
+    </div>
+
+    <audio id="audio-player"></audio>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        let scene, camera, renderer, controls;
+        let particles, contourLines;
+        let terrainData = [];
+        let time = 0;
+        let handPosition = { x: 0.5, y: 0.5, z: 0 };
+        let currentGesture = 'NONE';
+        let handTrackingEnabled = false;
+        let hands, handCamera, cameraStream;
+        let isPaused = true;
+        let targetZoom = 1.0;
+        let currentZoom = 1.0;
+        
+        // Audio system
+        let audioContext, analyser, audioSource;
+        let audioPlayer = null;
+        let isPlaying = false;
+        
+        // Settings
+        const settings = {
+            particlesEnabled: true,
+            contoursEnabled: false,
+            photosEnabled: false,
+            terrainScale: 100,
+            terrainHeight: 30,
+            particleCount: 50000, // Will be updated based on grid size
+            contourLevels: 12,
+            gridSize: 150 // Increased resolution for real data
+        };
+
+        // Terrain Data Handling
+        let terrainColors = []; // To store color data from satellite map
+
+        // Procedural fallback (approximate Thailand terrain)
+        function generateThailandTerrain(width, height) {
+            const data = [];
+            
+            for (let y = 0; y < height; y++) {
+                const row = [];
+                for (let x = 0; x < width; x++) {
+                    const nx = x / width;
+                    const ny = y / height;
+                    
+                    let elevation = 0;
+                    
+                    // Northern highlands
+                    if (ny < 0.4) {
+                        elevation += Math.sin(nx * 8 + ny * 4) * 0.3 + 0.5;
+                        elevation += Math.sin(nx * 15 + ny * 10) * 0.15;
+                        elevation *= (0.4 - ny) * 2;
+                    }
+                    
+                    // Central plains
+                    if (ny >= 0.3 && ny < 0.7) {
+                        const plainFactor = 1 - Math.abs(ny - 0.5) * 3;
+                        elevation += plainFactor * 0.1;
+                        elevation += Math.sin(nx * 20) * 0.02;
+                    }
+                    
+                    // Western mountains
+                    if (nx < 0.3) {
+                        elevation += Math.sin(ny * 10) * 0.25 * (0.3 - nx);
+                        elevation += Math.sin(ny * 25 + nx * 5) * 0.1;
+                    }
+                    
+                    // Eastern plateau
+                    if (nx > 0.5 && ny < 0.6) {
+                        elevation += 0.2 + Math.sin(nx * 5 + ny * 5) * 0.05;
+                    }
+                    
+                    // Southern peninsula
+                    if (ny > 0.7) {
+                        const peninsulaWidth = 0.15 + Math.sin(ny * 15) * 0.05;
+                        const peninsulaCenter = 0.4;
+                        if (Math.abs(nx - peninsulaCenter) < peninsulaWidth) {
+                            elevation += 0.15 + Math.sin(ny * 20 + nx * 10) * 0.1;
+                        }
+                    }
+                    
+                    elevation += (Math.random() - 0.5) * 0.02;
+                    elevation = Math.max(0, Math.min(1, elevation));
+                    row.push(elevation);
+                }
+                data.push(row);
+            }
+            
+            return data;
+        }
+
+        function getElevation(x, z) {
+            const gridSize = settings.gridSize;
+            const gridX = Math.floor((x / settings.terrainScale + 0.5) * (gridSize - 1));
+            const gridZ = Math.floor((z / settings.terrainScale + 0.5) * (gridSize - 1));
+            
+            if (gridX >= 0 && gridX < gridSize && gridZ >= 0 && gridZ < gridSize && terrainData[gridZ]) {
+                return terrainData[gridZ][gridX] * settings.terrainHeight;
+            }
+            return 0;
+        }
+
+        // Image Processing for DEM and Satellite
+        function processImage(file, type) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    const gridSize = settings.gridSize;
+                    canvas.width = gridSize;
+                    canvas.height = gridSize;
+                    const ctx = canvas.getContext('2d');
+                    
+                    // Draw and resize image to grid size
+                    ctx.drawImage(img, 0, 0, gridSize, gridSize);
+                    const pixelData = ctx.getImageData(0, 0, gridSize, gridSize).data;
+
+                    if (type === 'DEM') {
+                        // Process Heightmap
+                        terrainData = [];
+                        for (let y = 0; y < gridSize; y++) {
+                            const row = [];
+                            for (let x = 0; x < gridSize; x++) {
+                                const i = (y * gridSize + x) * 4;
+                                // Use Red channel for height (grayscale usually has R=G=B)
+                                const height = pixelData[i] / 255; 
+                                row.push(height);
+                            }
+                            terrainData.push(row);
+                        }
+                        
+                        // Update visualization
+                        createParticleTerrain();
+                        createContourLines();
+                        
+                        // Notify user
+                        document.querySelector('.title-badge .subtitle').textContent = "DATA SOURCE: IMPORTED DEM";
+                        
+                    } else if (type === 'SAT') {
+                        // Process Color Map
+                        terrainColors = [];
+                        for (let y = 0; y < gridSize; y++) {
+                            const row = [];
+                            for (let x = 0; x < gridSize; x++) {
+                                const i = (y * gridSize + x) * 4;
+                                row.push({
+                                    r: pixelData[i] / 255,
+                                    g: pixelData[i+1] / 255,
+                                    b: pixelData[i+2] / 255
+                                });
+                            }
+                            terrainColors.push(row);
+                        }
+                        
+                        // Update visualization
+                        createParticleTerrain();
+                        document.querySelector('.title-badge .subtitle').textContent = "DATA SOURCE: IMPORTED SAT";
+                    }
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function initScene() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a0c);
+            scene.fog = new THREE.FogExp2(0x0a0a0c, 0.008);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            // Top down view
+            camera.position.set(0, 100, 0.1); 
+            camera.lookAt(0, 0, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxPolarAngle = Math.PI / 2; // Allow almost horizon
+            controls.minPolarAngle = 0; // Allow top down
+            controls.minDistance = 30;
+            controls.maxDistance = 200;
+
+            // Initialize with procedural data
+            terrainData = generateThailandTerrain(settings.gridSize, settings.gridSize);
+            settings.particleCount = settings.gridSize * settings.gridSize;
+
+            createParticleTerrain();
+            createContourLines();
+
+            const ambientLight = new THREE.AmbientLight(0x444455, 0.6);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(50, 100, 50);
+            scene.add(directionalLight);
+
+            const pointLight = new THREE.PointLight(0xc0c0c0, 0.5, 100);
+            pointLight.position.set(0, 30, 0);
+            scene.add(pointLight);
+
+            createIndustrialGrid();
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function createIndustrialGrid() {
+            const gridSize = 120;
+            const divisions = 24;
+            const gridMaterial = new THREE.LineBasicMaterial({ 
+                color: 0xc0c0c0, 
+                transparent: true, 
+                opacity: 0.15 
+            });
+
+            const gridGeometry = new THREE.BufferGeometry();
+            const points = [];
+            const step = gridSize / divisions;
+
+            for (let i = -gridSize / 2; i <= gridSize / 2; i += step) {
+                points.push(-gridSize / 2, -0.5, i, gridSize / 2, -0.5, i);
+                points.push(i, -0.5, -gridSize / 2, i, -0.5, gridSize / 2);
+            }
+
+            gridGeometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+            const grid = new THREE.LineSegments(gridGeometry, gridMaterial);
+            scene.add(grid);
+        }
+
+        function createParticleTerrain() {
+            if (particles) {
+                scene.remove(particles);
+                particles.geometry.dispose();
+                particles.material.dispose();
+            }
+
+            const particleGeometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+            const particleMaterial = new THREE.ShaderMaterial({
+                vertexShader: `
+                    attribute vec3 instanceColor;
+                    attribute float instanceElevation;
+                    varying vec3 vColor;
+                    varying float vElevation;
+                    varying vec3 vPosition;
+                    
+                    void main() {
+                        vColor = instanceColor;
+                        vElevation = instanceElevation;
+                        vPosition = position;
+                        
+                        vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+                        gl_Position = projectionMatrix * mvPosition;
+                    }
+                `,
+                fragmentShader: `
+                    varying vec3 vColor;
+                    varying float vElevation;
+                    varying vec3 vPosition;
+                    
+                    void main() {
+                        float glow = smoothstep(0.0, 1.0, vElevation);
+                        vec3 color = mix(vColor * 0.8, vColor * 1.5, glow * 0.5);
+                        
+                        float edge = 1.0 - smoothstep(0.0, 0.15, abs(vPosition.x));
+                        edge = max(edge, 1.0 - smoothstep(0.0, 0.15, abs(vPosition.y)));
+                        edge = max(edge, 1.0 - smoothstep(0.0, 0.15, abs(vPosition.z)));
+                        color += vec3(1.0, 1.0, 1.0) * edge * 0.2;
+                        
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `,
+                transparent: false
+            });
+
+            const gridSize = settings.gridSize;
+            const count = gridSize * gridSize;
+            particles = new THREE.InstancedMesh(particleGeometry, particleMaterial, count);
+
+            const instanceColors = new Float32Array(count * 3);
+            const instanceElevations = new Float32Array(count);
+            const dummy = new THREE.Object3D();
+            const color = new THREE.Color();
+            
+            let i = 0;
+            for (let z = 0; z < gridSize; z++) {
+                for (let x = 0; x < gridSize; x++) {
+                    const elevation = terrainData[z] ? terrainData[z][x] : 0;
+                    const worldX = (x / gridSize - 0.5) * settings.terrainScale;
+                    const worldZ = (z / gridSize - 0.5) * settings.terrainScale;
+                    const worldY = elevation * settings.terrainHeight;
+
+                    dummy.position.set(worldX, worldY, worldZ);
+                    // Scale height slightly based on elevation for visual effect
+                    dummy.scale.set(1, 1 + elevation * 5, 1); 
+                    dummy.updateMatrix();
+                    particles.setMatrixAt(i, dummy.matrix);
+
+                    // Determine color
+                    if (terrainColors.length > 0 && terrainColors[z] && terrainColors[z][x]) {
+                        // Use imported satellite color
+                        const c = terrainColors[z][x];
+                        color.setRGB(c.r, c.g, c.b);
+                    } else {
+                        // Procedural Color Scheme (Tech/Silver)
+                        if (elevation < 0.15) {
+                            color.setRGB(0.3, 0.3, 0.35); // Deep water/lowland
+                        } else if (elevation < 0.3) {
+                            color.setRGB(0.4, 0.42, 0.45); // Lowland
+                        } else if (elevation < 0.5) {
+                            color.setRGB(0.55, 0.55, 0.6); // Mid
+                        } else if (elevation < 0.7) {
+                            color.setRGB(0.7, 0.72, 0.75); // High
+                        } else {
+                            color.setRGB(0.9, 0.92, 0.95); // Peak
+                        }
+                    }
+
+                    instanceColors[i * 3] = color.r;
+                    instanceColors[i * 3 + 1] = color.g;
+                    instanceColors[i * 3 + 2] = color.b;
+                    instanceElevations[i] = elevation;
+
+                    i++;
+                }
+            }
+
+            particleGeometry.setAttribute('instanceColor', new THREE.InstancedBufferAttribute(instanceColors, 3));
+            particleGeometry.setAttribute('instanceElevation', new THREE.InstancedBufferAttribute(instanceElevations, 1));
+
+            particles.instanceMatrix.needsUpdate = true;
+            scene.add(particles);
+
+            document.getElementById('particle-count').textContent = count.toLocaleString();
+        }
+
+        function createContourLines() {
+            if (contourLines) {
+                scene.remove(contourLines);
+                // Clean up children if needed, though Group removal handles visual removal
+                contourLines.clear(); 
+            }
+
+            contourLines = new THREE.Group();
+            const levels = settings.contourLevels;
+            const gridSize = settings.gridSize;
+
+            for (let level = 0; level < levels; level++) {
+                const targetHeight = (level / levels);
+                const points = [];
+
+                for (let z = 0; z < gridSize - 1; z++) {
+                    for (let x = 0; x < gridSize - 1; x++) {
+                        if (!terrainData[z] || !terrainData[z+1]) continue;
+                        
+                        const h00 = terrainData[z][x];
+                        const h10 = terrainData[z][x + 1];
+                        const h01 = terrainData[z + 1][x];
+                        const h11 = terrainData[z + 1][x + 1];
+
+                        const min = Math.min(h00, h10, h01, h11);
+                        const max = Math.max(h00, h10, h01, h11);
+
+                        if (targetHeight >= min && targetHeight <= max) {
+                            const worldX = (x / gridSize - 0.5) * settings.terrainScale;
+                            const worldZ = (z / gridSize - 0.5) * settings.terrainScale;
+                            const worldY = targetHeight * settings.terrainHeight + 0.5;
+
+                            points.push(new THREE.Vector3(worldX, worldY, worldZ));
+                        }
+                    }
+                }
+
+                if (points.length > 0) {
+                    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                    const brightness = 0.4 + (level / levels) * 0.6;
+                    const line = new THREE.Points(geometry, new THREE.PointsMaterial({
+                        color: new THREE.Color(brightness, brightness, brightness + 0.05),
+                        size: 0.5,
+                        transparent: true,
+                        opacity: 0.7
+                    }));
+                    contourLines.add(line);
+                }
+            }
+
+            contourLines.visible = settings.contoursEnabled;
+            scene.add(contourLines);
+        }
+
+        // Gesture detection functions
+        function detectGesture(landmarks) {
+            if (!landmarks || landmarks.length === 0) return 'NONE';
+
+            const thumbTip = landmarks[4];
+            const indexTip = landmarks[8];
+            const middleTip = landmarks[12];
+            const ringTip = landmarks[16];
+            const pinkyTip = landmarks[20];
+
+            const indexMcp = landmarks[5];
+            const middleMcp = landmarks[9];
+            const ringMcp = landmarks[13];
+            const pinkyMcp = landmarks[17];
+
+            // Check if fingers are extended
+            const indexExtended = indexTip.y < indexMcp.y;
+            const middleExtended = middleTip.y < middleMcp.y;
+            const ringExtended = ringTip.y < ringMcp.y;
+            const pinkyExtended = pinkyTip.y < pinkyMcp.y;
+
+            // Open hand (all fingers extended)
+            if (indexExtended && middleExtended && ringExtended && pinkyExtended) {
+                return 'OPEN';
+            }
+
+            // Fist (no fingers extended)
+            if (!indexExtended && !middleExtended && !ringExtended && !pinkyExtended) {
+                return 'FIST';
+            }
+
+            return 'NONE';
+        }
+
+        async function initHandTracking() {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('hand-canvas');
+            const ctx = canvas.getContext('2d');
+
+            canvas.width = 160;
+            canvas.height = 120;
+
+            if (!hands) {
+                hands = new Hands({
+                    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+                });
+
+                hands.setOptions({
+                    maxNumHands: 1,
+                    modelComplexity: 1,
+                    minDetectionConfidence: 0.7,
+                    minTrackingConfidence: 0.5
+                });
+
+                hands.onResults((results) => {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                    if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                        const landmarks = results.multiHandLandmarks[0];
+                        
+                        // Draw hand landmarks
+                        ctx.strokeStyle = '#ffffff';
+                        ctx.lineWidth = 1;
+                        
+                        const connections = [
+                            [0, 1], [1, 2], [2, 3], [3, 4],
+                            [0, 5], [5, 6], [6, 7], [7, 8],
+                            [5, 9], [9, 10], [10, 11], [11, 12],
+                            [9, 13], [13, 14], [14, 15], [15, 16],
+                            [13, 17], [17, 18], [18, 19], [19, 20],
+                            [0, 17]
+                        ];
+
+                        connections.forEach(([a, b]) => {
+                            ctx.beginPath();
+                            ctx.moveTo(landmarks[a].x * canvas.width, landmarks[a].y * canvas.height);
+                            ctx.lineTo(landmarks[b].x * canvas.width, landmarks[b].y * canvas.height);
+                            ctx.stroke();
+                        });
+
+                        landmarks.forEach((lm, i) => {
+                            ctx.beginPath();
+                            ctx.arc(lm.x * canvas.width, lm.y * canvas.height, 2, 0, Math.PI * 2);
+                            ctx.fillStyle = i === 8 || i === 4 ? '#ffffff' : '#c0c0c0';
+                            ctx.fill();
+                        });
+
+                        // Detect gesture
+                        currentGesture = detectGesture(landmarks);
+                        
+                        // Update hand position
+                        const indexTip = landmarks[8];
+                        handPosition.x = 1 - indexTip.x;
+                        handPosition.y = indexTip.y;
+                        
+                        // No panning, just wake up animation
+                        isPaused = false;
+
+                        // Update UI
+                        const handCursor = document.getElementById('hand-cursor');
+                        handCursor.style.left = (handPosition.x * window.innerWidth) + 'px';
+                        handCursor.style.top = (handPosition.y * window.innerHeight) + 'px';
+                        handCursor.classList.add('visible');
+                        handCursor.classList.remove('fist', 'open');
+                        
+                        if (currentGesture !== 'NONE') {
+                            handCursor.classList.add(currentGesture.toLowerCase());
+                        }
+
+                        document.getElementById('gesture-type').textContent = currentGesture;
+                        document.getElementById('current-gesture').textContent = currentGesture;
+
+                        // Handle gestures (Zoom)
+                        handleGesture(currentGesture);
+                    } else {
+                        document.getElementById('hand-cursor').classList.remove('visible');
+                        document.getElementById('gesture-type').textContent = 'NONE';
+                        document.getElementById('current-gesture').textContent = 'NONE';
+                        currentGesture = 'NONE';
+                        
+                        // No hand detected = Pause
+                        isPaused = true;
+                    }
+                });
+            }
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } });
+                cameraStream = stream;
+                video.srcObject = stream;
+                video.play();
+
+                if (!handCamera) {
+                    handCamera = new Camera(video, {
+                        onFrame: async () => {
+                            if (handTrackingEnabled) {
+                                await hands.send({ image: video });
+                            }
+                        },
+                        width: 320,
+                        height: 240
+                    });
+                }
+
+                handCamera.start();
+                
+                document.getElementById('status-hand').classList.remove('inactive');
+                document.getElementById('status-hand').classList.add('active');
+                document.getElementById('hand-status-text').textContent = 'HAND TRACKING: ONLINE';
+                
+                const btn = document.getElementById('btn-hand');
+                btn.textContent = '◢ HAND: ON';
+                btn.classList.add('active');
+                
+                handTrackingEnabled = true;
+
+            } catch (error) {
+                console.error('Hand tracking error:', error);
+                document.getElementById('hand-status-text').textContent = 'HAND TRACKING: ERROR';
+            }
+        }
+
+        function stopHandTracking() {
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+                cameraStream = null;
+            }
+            
+            const video = document.getElementById('video');
+            video.srcObject = null;
+            
+            handTrackingEnabled = false;
+            
+            // Reset UI
+            const btn = document.getElementById('btn-hand');
+            btn.textContent = '◢ ENABLE HAND';
+            btn.classList.remove('active');
+            
+            document.getElementById('status-hand').classList.remove('active');
+            document.getElementById('status-hand').classList.add('inactive');
+            document.getElementById('hand-status-text').textContent = 'HAND TRACKING: OFFLINE';
+            
+            document.getElementById('hand-cursor').classList.remove('visible');
+            document.getElementById('gesture-type').textContent = 'NONE';
+            document.getElementById('current-gesture').textContent = 'NONE';
+            
+            // Force Pause
+            isPaused = true;
+            
+            // Clear canvas
+            const canvas = document.getElementById('hand-canvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function handleGesture(gesture) {
+            const zoomSpeed = 0.02;
+            const minZoom = 0.3;
+            const maxZoom = 3.0;
+
+            switch (gesture) {
+                case 'OPEN':
+                    // Zoom in
+                    targetZoom = Math.min(maxZoom, targetZoom + zoomSpeed);
+                    break;
+                    
+                case 'FIST':
+                    // Zoom out
+                    targetZoom = Math.max(minZoom, targetZoom - zoomSpeed);
+                    break;
+            }
+        }
+
+        // Audio system
+        function initAudio() {
+            audioPlayer = document.getElementById('audio-player');
+            const playBtn = document.getElementById('btn-play');
+            const fileInput = document.getElementById('audio-file');
+            const progressBar = document.getElementById('audio-progress');
+            const prevBtn = document.getElementById('btn-prev');
+            const nextBtn = document.getElementById('btn-next');
+
+            fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const url = URL.createObjectURL(file);
+                    audioPlayer.src = url;
+                    initAudioContext();
+                }
+            });
+
+            playBtn.addEventListener('click', () => {
+                if (audioPlayer.src) {
+                    if (isPlaying) {
+                        audioPlayer.pause();
+                        playBtn.textContent = '▶';
+                        playBtn.classList.remove('playing');
+                    } else {
+                        audioPlayer.play();
+                        playBtn.textContent = '⏸';
+                        playBtn.classList.add('playing');
+                    }
+                    isPlaying = !isPlaying;
+                }
+            });
+
+            prevBtn.addEventListener('click', () => {
+                audioPlayer.currentTime = Math.max(0, audioPlayer.currentTime - 10);
+            });
+
+            nextBtn.addEventListener('click', () => {
+                audioPlayer.currentTime = Math.min(audioPlayer.duration, audioPlayer.currentTime + 10);
+            });
+
+            progressBar.addEventListener('click', (e) => {
+                if (audioPlayer.duration) {
+                    const rect = progressBar.getBoundingClientRect();
+                    const percent = (e.clientX - rect.left) / rect.width;
+                    audioPlayer.currentTime = percent * audioPlayer.duration;
+                }
+            });
+
+            audioPlayer.addEventListener('timeupdate', updateAudioProgress);
+            audioPlayer.addEventListener('ended', () => {
+                isPlaying = false;
+                document.getElementById('btn-play').textContent = '▶';
+                document.getElementById('btn-play').classList.remove('playing');
+            });
+        }
+
+        function initAudioContext() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 32;
+                
+                audioSource = audioContext.createMediaElementSource(audioPlayer);
+                audioSource.connect(analyser);
+                analyser.connect(audioContext.destination);
+            }
+        }
+
+        function updateAudioProgress() {
+            const progress = (audioPlayer.currentTime / audioPlayer.duration) * 100 || 0;
+            document.getElementById('audio-progress-fill').style.width = progress + '%';
+            
+            const current = formatTime(audioPlayer.currentTime);
+            const total = formatTime(audioPlayer.duration);
+            document.getElementById('audio-time').textContent = `${current} / ${total}`;
+        }
+
+        function formatTime(seconds) {
+            if (isNaN(seconds)) return '00:00';
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function updateAudioVisualizer() {
+            if (!analyser || !isPlaying) return;
+
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteFrequencyData(dataArray);
+
+            const bars = document.querySelectorAll('.audio-bar');
+            bars.forEach((bar, i) => {
+                const value = dataArray[i] || 0;
+                const height = Math.max(3, (value / 255) * 30);
+                bar.style.height = height + 'px';
+            });
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (!isPaused) {
+                time += 0.016;
+            }
+            
+            controls.update();
+
+            // Smooth zoom transition
+            currentZoom += (targetZoom - currentZoom) * 0.05;
+            
+            // Apply GPS-style zoom
+            const baseDistance = 80;
+            const targetDistance = baseDistance / currentZoom;
+            
+            const direction = camera.position.clone().normalize();
+            const newDistance = camera.position.length() + (targetDistance - camera.position.length()) * 0.05;
+            camera.position.copy(direction.multiplyScalar(newDistance));
+
+            // Update zoom display
+            document.getElementById('zoom-level').textContent = currentZoom.toFixed(1) + 'x';
+            const zoomPercent = ((currentZoom - 0.3) / (3.0 - 0.3)) * 100;
+            document.getElementById('zoom-fill').style.width = zoomPercent + '%';
+
+            // Subtle particle animation when not paused
+            if (particles && !isPaused) {
+                const dummy = new THREE.Object3D();
+                const matrix = new THREE.Matrix4();
+                const gridSize = settings.gridSize;
+                
+                // Only animate a subset to save performance
+                for (let i = 0; i < Math.min(2000, settings.particleCount); i += 13) {
+                    particles.getMatrixAt(i, matrix);
+                    matrix.decompose(dummy.position, dummy.quaternion, dummy.scale);
+                    
+                    const gridX = Math.floor((dummy.position.x / settings.terrainScale + 0.5) * (gridSize - 1));
+                    const gridZ = Math.floor((dummy.position.z / settings.terrainScale + 0.5) * (gridSize - 1));
+                    
+                    if (gridX >= 0 && gridX < gridSize && gridZ >= 0 && gridZ < gridSize && terrainData[gridZ]) {
+                        const baseY = terrainData[gridZ][gridX] * settings.terrainHeight;
+                        dummy.position.y = baseY + Math.sin(time * 2 + i * 0.01) * 0.3;
+                        dummy.updateMatrix();
+                        particles.setMatrixAt(i, dummy.matrix);
+                    }
+                }
+                particles.instanceMatrix.needsUpdate = true;
+            }
+
+            // Update audio visualizer
+            updateAudioVisualizer();
+
+            updateUI();
+            renderer.render(scene, camera);
+        }
+
+        let frameCount = 0;
+        let lastTime = performance.now();
+        let fps = 60;
+
+        function updateUI() {
+            frameCount++;
+            const now = performance.now();
+            
+            if (now - lastTime >= 1000) {
+                fps = frameCount;
+                frameCount = 0;
+                lastTime = now;
+            }
+
+            document.getElementById('fps').textContent = fps;
+            
+            const date = new Date();
+            document.getElementById('time-display').textContent = 
+                date.toTimeString().split(' ')[0];
+
+            const camElevation = camera.position.y;
+            document.getElementById('elevation').textContent = camElevation.toFixed(2) + ' M';
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function initButtons() {
+            document.getElementById('btn-particles').addEventListener('click', function() {
+                settings.particlesEnabled = !settings.particlesEnabled;
+                particles.visible = settings.particlesEnabled;
+                this.classList.toggle('active', settings.particlesEnabled);
+            });
+
+            document.getElementById('btn-contours').addEventListener('click', function() {
+                settings.contoursEnabled = !settings.contoursEnabled;
+                contourLines.visible = settings.contoursEnabled;
+                this.classList.toggle('active', settings.contoursEnabled);
+            });
+
+            document.getElementById('btn-hand').addEventListener('click', function() {
+                if (!handTrackingEnabled) {
+                    initHandTracking();
+                } else {
+                    stopHandTracking();
+                }
+            });
+
+            document.getElementById('input-dem').addEventListener('change', function(e) {
+                if(e.target.files.length > 0) {
+                    processImage(e.target.files[0], 'DEM');
+                }
+            });
+
+            document.getElementById('input-sat').addEventListener('change', function(e) {
+                if(e.target.files.length > 0) {
+                    processImage(e.target.files[0], 'SAT');
+                }
+            });
+        }
+
+        function init() {
+            initScene();
+            initButtons();
+            initAudio();
+            animate();
+
+            setTimeout(() => {
+                document.getElementById('loading-screen').classList.add('hidden');
+            }, 2000);
+        }
+
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>

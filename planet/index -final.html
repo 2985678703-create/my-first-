@@ -1,0 +1,1268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>宇宙行星粒子系统 - 手势控制（增强渐变+完整太阳系）</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{overflow:hidden;background:radial-gradient(ellipse at center,#0d1b2a 0%,#000 100%);font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif}
+    body::before{content:'';position:fixed;width:100%;height:100%;background-image:
+      radial-gradient(2px 2px at 20% 30%, white, transparent),
+      radial-gradient(2px 2px at 60% 70%, white, transparent),
+      radial-gradient(1px 1px at 50% 50%, white, transparent);
+      background-size:200% 200%;animation:twinkle 8s ease-in-out infinite;opacity:.6;z-index:0}
+    @keyframes twinkle{0%,100%{opacity:.6}50%{opacity:1}}
+    #videoCanvas{position:fixed;bottom:20px;right:20px;width:240px;height:180px;border:2px solid rgba(100,200,255,.4);border-radius:12px;z-index:200;display:none;transform:scaleX(-1);box-shadow:0 8px 32px rgba(31,38,135,.37)}
+    #videoCanvas.active{display:block}
+    #gestureDisplay{position:fixed;top:50%;right:30px;transform:translateY(-50%);width:100px;height:100px;background:linear-gradient(135deg,rgba(10,25,47,.9),rgba(30,60,114,.9));border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:40px;z-index:200;border:2px solid rgba(100,200,255,.3);backdrop-filter:blur(10px);transition:all .3s;opacity:0;box-shadow:0 8px 32px rgba(31,38,135,.37)}
+    #gestureDisplay.active{opacity:1}
+    #gestureDisplay.zooming-in{box-shadow:0 0 40px rgba(0,200,255,.8);border-color:rgba(0,200,255,.8);animation:pulseIn .5s infinite}
+    #gestureDisplay.zooming-out{box-shadow:0 0 40px rgba(255,150,50,.8);border-color:rgba(255,150,50,.8);animation:pulseOut .5s infinite}
+    #gestureDisplay.rotating{box-shadow:0 0 40px rgba(147,51,234,.8);border-color:rgba(147,51,234,.8);animation:pulseRotate .5s infinite}
+    @keyframes pulseIn{0%{transform:translateY(-50%) scale(1)}50%{transform:translateY(-50%) scale(1.1)}100%{transform:translateY(-50%) scale(1)}}
+    @keyframes pulseOut{0%{transform:translateY(-50%) scale(1)}50%{transform:translateY(-50%) scale(.9)}100%{transform:translateY(-50%) scale(1)}}
+    @keyframes pulseRotate{0%{transform:translateY(-50%) scale(1) rotate(0)}50%{transform:translateY(-50%) scale(1.1) rotate(10deg)}100%{transform:translateY(-50%) scale(1) rotate(0)}}
+    #gestureAction{font-size:12px;color:#a0cfff;margin-top:5px;font-weight:600}
+    #handControlBtn{position:fixed;bottom:20px;right:270px;width:60px;height:60px;background:linear-gradient(135deg,#1e3a8a,#3b82f6);border:none;border-radius:50%;color:#fff;font-size:24px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:200;transition:all .3s;box-shadow:0 8px 32px rgba(59,130,246,.4)}
+    #handControlBtn:hover{transform:scale(1.1);box-shadow:0 12px 40px rgba(59,130,246,.6)}
+    #handControlBtn.active{background:linear-gradient(135deg,#f59e0b,#ef4444);box-shadow:0 12px 40px rgba(239,68,68,.6)}
+    #gestureStatus{position:fixed;bottom:210px;right:20px;width:240px;background:linear-gradient(135deg,rgba(10,25,47,.95),rgba(30,60,114,.95));padding:15px;border-radius:12px;backdrop-filter:blur(10px);border:1px solid rgba(100,200,255,.3);color:#fff;font-size:12px;z-index:200;display:none;box-shadow:0 8px 32px rgba(31,38,135,.37)}
+    #gestureStatus.active{display:block}
+    #gestureStatus h4{margin:0 0 10px 0;color:#60a5fa;font-size:14px;text-align:center}
+    .status-item{display:flex;justify-content:space-between;margin:8px 0;padding:5px;background:rgba(59,130,246,.1);border-radius:5px}
+    .status-value{color:#10b981;font-weight:bold}
+    .status-value.zooming-in{color:#10b981;animation:blink .5s infinite}
+    .status-value.zooming-out{color:#f59e0b;animation:blink .5s infinite}
+    .status-value.rotating{color:#a855f7;animation:blink .5s infinite}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+    #zoomSpeedControl{position:fixed;bottom:90px;right:270px;width:240px;background:linear-gradient(135deg,rgba(10,25,47,.95),rgba(30,60,114,.95));padding:10px;border-radius:8px;backdrop-filter:blur(10px);border:1px solid rgba(100,200,255,.3);z-index:200;display:none;box-shadow:0 8px 32px rgba(31,38,135,.37)}
+    #zoomSpeedControl.active{display:block}
+    #zoomSpeedControl label{color:#93c5fd;font-size:11px;display:block;margin-bottom:5px}
+    #zoomSpeed{width:100%;height:3px;background:linear-gradient(90deg,#3b82f6,#8b5cf6);outline:none;border-radius:2px;-webkit-appearance:none}
+    #zoomSpeed::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;background:#fff;border-radius:50%;cursor:pointer}
+    #zoomSpeedValue{color:#60a5fa;float:right;font-size:11px}
+    #info{position:fixed;top:15px;left:15px;color:rgba(255,255,255,.95);font-size:13px;padding:12px 18px;background:linear-gradient(135deg,rgba(10,25,47,.95),rgba(30,60,114,.95));border-radius:12px;backdrop-filter:blur(10px);border:1px solid rgba(100,200,255,.3);z-index:100;user-select:none;box-shadow:0 8px 32px rgba(31,38,135,.37);max-width:260px}
+    #info h3{margin:0 0 8px 0;background:linear-gradient(45deg,#3b82f6,#8b5cf6,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:16px;font-weight:700}
+    #info p{margin:4px 0;opacity:.9;font-size:11px;color:#93c5fd}
+    .hand-indicator{margin-top:8px;padding:6px;background:rgba(59,130,246,.2);border-radius:5px;display:none;color:#60a5fa;font-size:10px}
+    .hand-indicator.active{display:block}
+    #controls{position:fixed;top:50%;left:15px;transform:translateY(-50%);width:280px;max-height:70vh;overflow-y:auto;background:linear-gradient(135deg,rgba(10,25,47,.95),rgba(30,60,114,.95));color:#fff;padding:18px;border-radius:12px;backdrop-filter:blur(10px);border:1px solid rgba(100,200,255,.3);z-index:100;user-select:none;box-shadow:0 8px 32px rgba(31,38,135,.37)}
+    #controls h3{margin:0 0 12px 0;background:linear-gradient(45deg,#3b82f6,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:15px;text-align:center;text-transform:uppercase;letter-spacing:1.5px;font-weight:700}
+    .control-row{margin:12px 0}
+    .control-row label{display:block;margin-bottom:4px;font-size:11px;color:#93c5fd;text-transform:uppercase;font-weight:600}
+    .control-row input[type="range"]{width:100%;height:3px;background:linear-gradient(90deg,#3b82f6,#8b5cf6);outline:none;border-radius:2px;-webkit-appearance:none;opacity:.7}
+    .control-row input[type="range"]:hover{opacity:1}
+    .control-row input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;background:#fff;border-radius:50%;cursor:pointer;box-shadow:0 0 10px rgba(59,130,246,.5)}
+    .value-display{float:right;color:#60a5fa;font-size:11px;font-weight:bold}
+    .button-group{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:10px}
+    button{background:linear-gradient(135deg,#1e3a8a,#3b82f6);color:#fff;border:none;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:9px;transition:all .3s;text-transform:uppercase;font-weight:600;letter-spacing:.5px;box-shadow:0 4px 12px rgba(59,130,246,.3)}
+    button:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(59,130,246,.5)}
+    button.active{background:linear-gradient(135deg,#f59e0b,#ef4444);box-shadow:0 6px 16px rgba(239,68,68,.5)}
+    #stats{position:fixed;bottom:15px;left:15px;color:rgba(255,255,255,.9);font-size:11px;background:linear-gradient(135deg,rgba(10,25,47,.95),rgba(30,60,114,.95));padding:8px 12px;border-radius:8px;backdrop-filter:blur(10px);font-family:'Courier New',monospace;z-index:100;border:1px solid rgba(100,200,255,.3);box-shadow:0 8px 32px rgba(31,38,135,.37)}
+    .separator{height:1px;background:linear-gradient(90deg,transparent,rgba(100,200,255,.3),transparent);margin:12px 0}
+    #loadingML5{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(10,25,47,.98);color:#fff;padding:20px 35px;border-radius:12px;z-index:1000;display:none;border:1px solid rgba(100,200,255,.3);box-shadow:0 8px 32px rgba(31,38,135,.5)}
+    #loadingML5.active{display:block}
+    #shapeNameDisplay{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-size:52px;color:rgba(255,255,255,.95);text-shadow:0 0 20px rgba(59,130,246,.8),0 0 40px rgba(139,92,246,.6);z-index:150;opacity:0;transition:opacity .5s;pointer-events:none;font-weight:700}
+    #shapeNameDisplay.show{opacity:1}
+    #controls::-webkit-scrollbar{width:6px}
+    #controls::-webkit-scrollbar-track{background:rgba(59,130,246,.1);border-radius:3px}
+    #controls::-webkit-scrollbar-thumb{background:rgba(59,130,246,.5);border-radius:3px}
+  </style>
+
+  <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.4.0/lib/p5.js"></script>
+</head>
+<body>
+  <div id="loadingML5"><div>🚀 正在加载手势识别模型...</div></div>
+  <canvas id="videoCanvas"></canvas>
+
+  <div id="gestureDisplay">
+    <span id="gestureEmoji">✋</span>
+    <span id="gestureAction"></span>
+  </div>
+
+  <div id="shapeNameDisplay"></div>
+  <button id="handControlBtn">🖐️</button>
+
+  <div id="zoomSpeedControl">
+    <label>缩放速度 <span id="zoomSpeedValue">1.0</span></label>
+    <input type="range" id="zoomSpeed" min="0.5" max="3" step="0.1" value="1" />
+  </div>
+
+  <div id="gestureStatus">
+    <h4>🎮 手势控制</h4>
+    <div class="status-item"><span>状态</span><span class="status-value" id="detectionStatus">未启动</span></div>
+    <div class="status-item"><span>手势</span><span class="status-value" id="gestureType">无</span></div>
+    <div class="status-item"><span>动作</span><span class="status-value" id="actionStatus">静止</span></div>
+    <div class="status-item"><span>距离</span><span class="status-value" id="cameraDistance">35</span></div>
+  </div>
+
+  <div id="info">
+    <h3>🌌 宇宙探索</h3>
+    <p>🖱️ 拖动旋转 | 滚轮缩放</p>
+    <p>✋ 张开放大 | ✊ 握拳缩小</p>
+    <p>✌️ 剪刀手旋转</p>
+    <p>⌨️ 空格暂停 | R重置</p>
+    <div class="hand-indicator" id="handIndicator"><span style="font-size:18px;">🎯</span><span>手势控制已激活</span></div>
+  </div>
+
+  <div id="controls">
+    <h3>🎛️ 控制中心</h3>
+    <div class="control-row">
+      <label>速度 <span class="value-display" id="speed-val">1.0</span></label>
+      <input type="range" id="speed" min="0" max="3" step="0.1" value="1" />
+    </div>
+    <div class="control-row">
+      <label>粒子大小 <span class="value-display" id="size-val">1.0</span></label>
+      <input type="range" id="size" min="0.5" max="2.5" step="0.1" value="1" />
+    </div>
+    <div class="control-row">
+      <label>亮度 <span class="value-display" id="brightness-val">1.0</span></label>
+      <input type="range" id="brightness" min="0.5" max="2" step="0.1" value="1" />
+    </div>
+    <div class="separator"></div>
+    <div style="margin-top:12px;">
+      <label style="font-size:11px;color:#93c5fd;font-weight:600;margin-bottom:8px;display:block;">🪐 天体形态</label>
+      <div class="button-group">
+        <button id="shape0" class="active">🌌 星河</button>
+        <button id="shape1">☀️ 太阳系</button>
+        <button id="shape2">☿️ 水星</button>
+        <button id="shape3">♀️ 金星</button>
+        <button id="shape4">🌍 地球</button>
+        <button id="shape5">♂️ 火星</button>
+        <button id="shape6">♃ 木星</button>
+        <button id="shape7">♄ 土星</button>
+        <button id="shape8">♅ 天王星</button>
+        <button id="shape9">♆ 海王星</button>
+        <button id="shape10">🌀 螺旋</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="stats">FPS: <span id="fps">0</span> | 粒子: <span id="particles">0</span></div>
+
+  <script type="module">
+    import * as THREE from "https://cdn.skypack.dev/three@0.136.0";
+    import { OrbitControls } from "https://cdn.skypack.dev/three@0.136.0/examples/jsm/controls/OrbitControls";
+
+    console.clear();
+
+    // ==================== ML5 手势控制 ====================
+    let handpose;
+    let video;
+    let predictions = [];
+    let handControlEnabled = false;
+    let currentGesture = "none";
+    let targetCameraDistance = 35;
+    let currentCameraDistance = 35;
+    let zoomSpeed = 1.0;
+    let isZoomingIn = false;
+    let isZoomingOut = false;
+    let isRotating = false;
+    let canvas, ctx;
+
+    async function initML5HandPose() {
+      document.getElementById("loadingML5").classList.add("active");
+
+      video = document.createElement("video");
+      video.width = 640;
+      video.height = 480;
+      video.muted = true;
+      video.setAttribute("playsinline", "true");
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 640, height: 480, facingMode: "user" }
+      });
+
+      video.srcObject = stream;
+      await video.play();
+
+      canvas = document.getElementById("videoCanvas");
+      ctx = canvas.getContext("2d");
+      canvas.width = 240;
+      canvas.height = 180;
+
+      handpose = window.ml5.handpose(video, () => {
+        console.log("ML5 Handpose Model Loaded!");
+        document.getElementById("loadingML5").classList.remove("active");
+        document.getElementById("detectionStatus").textContent = "就绪";
+
+        handpose.on("predict", (results) => {
+          predictions = results || [];
+          detectGesture();
+        });
+      });
+    }
+
+       function detectGesture() {
+      if (predictions && predictions.length > 0) {
+        const hand = predictions[0];
+        const landmarks = hand.landmarks;
+        if (!Array.isArray(landmarks)) return;
+
+        drawHand(landmarks);
+
+        const fingerStates = calculateFingerStates(landmarks);
+        const openFingers = fingerStates.filter(Boolean).length;
+        const isScissors = !fingerStates[0] && fingerStates[1] && fingerStates[2] && !fingerStates[3] && !fingerStates[4];
+
+        if (isScissors) {
+          currentGesture = "scissors";
+          isRotating = true; isZoomingIn = false; isZoomingOut = false;
+          document.getElementById("gestureEmoji").textContent = "✌️";
+          document.getElementById("gestureAction").textContent = "旋转";
+          document.getElementById("gestureDisplay").className = "active rotating";
+          document.getElementById("gestureType").textContent = "剪刀";
+          document.getElementById("actionStatus").textContent = "旋转中";
+          document.getElementById("actionStatus").className = "status-value rotating";
+        } else if (openFingers >= 4) {
+          currentGesture = "open";
+          isZoomingIn = true; isZoomingOut = false; isRotating = false;
+          document.getElementById("gestureEmoji").textContent = "🖐️";
+          document.getElementById("gestureAction").textContent = "放大";
+          document.getElementById("gestureDisplay").className = "active zooming-in";
+          document.getElementById("gestureType").textContent = "张开";
+          document.getElementById("actionStatus").textContent = "放大中";
+          document.getElementById("actionStatus").className = "status-value zooming-in";
+        } else if (openFingers <= 1) {
+          currentGesture = "closed";
+          isZoomingOut = true; isZoomingIn = false; isRotating = false;
+          document.getElementById("gestureEmoji").textContent = "✊";
+          document.getElementById("gestureAction").textContent = "缩小";
+          document.getElementById("gestureDisplay").className = "active zooming-out";
+          document.getElementById("gestureType").textContent = "握拳";
+          document.getElementById("actionStatus").textContent = "缩小中";
+          document.getElementById("actionStatus").className = "status-value zooming-out";
+        } else {
+          currentGesture = "partial";
+          isZoomingIn = false; isZoomingOut = false; isRotating = false;
+          document.getElementById("gestureEmoji").textContent = "🤚";
+          document.getElementById("gestureAction").textContent = "暂停";
+          document.getElementById("gestureDisplay").className = "active";
+          document.getElementById("gestureType").textContent = "部分";
+          document.getElementById("actionStatus").textContent = "静止";
+          document.getElementById("actionStatus").className = "status-value";
+        }
+      } else {
+        currentGesture = "none";
+        isZoomingIn = false; isZoomingOut = false; isRotating = false;
+        document.getElementById("gestureDisplay").classList.remove("active");
+        document.getElementById("detectionStatus").textContent = "未检测";
+        document.getElementById("gestureType").textContent = "无";
+        document.getElementById("actionStatus").textContent = "静止";
+        document.getElementById("actionStatus").className = "status-value";
+      }
+    }
+
+ function calculateFingerStates(lm) {
+      const tips = [4, 8, 12, 16, 20];
+      const pips = [2, 6, 10, 14, 18];
+      const states = Array(5).fill(false);
+
+      const dxThumb = Math.abs(lm[4][0] - lm[2][0]);
+      const dyThumb = Math.abs(lm[4][1] - lm[2][1]);
+      states[0] = dxThumb > 20 && dyThumb < 60;
+
+      for (let i = 1; i < 5; i++) {
+        states[i] = lm[tips[i]][1] < lm[pips[i]][1] - 5;
+      }
+      return states;
+    }
+
+    function drawHand(landmarks) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      if (!landmarks || landmarks.length === 0) return;
+
+      const vidW = video.videoWidth || video.width || 640;
+      const vidH = video.videoHeight || video.height || 480;
+      const scaleX = canvas.width / vidW;
+      const scaleY = canvas.height / vidH;
+
+      let color = "#00ff00";
+      if (isZoomingIn) color = "#00ffaa";
+      if (isZoomingOut) color = "#ff6b9d";
+      if (isRotating) color = "#a855f7";
+
+      ctx.fillStyle = color;
+      landmarks.forEach(([lx, ly]) => {
+        const x = lx * scaleX;
+        const y = ly * scaleY;
+        ctx.beginPath();
+        ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      const connections = [
+        [0,1],[1,2],[2,3],[3,4],
+        [0,5],[5,6],[6,7],[7,8],
+        [5,9],[9,10],[10,11],[11,12],
+        [9,13],[13,14],[14,15],[15,16],
+        [13,17],[17,18],[18,19],[19,20],
+        [0,17]
+      ];
+
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      connections.forEach(([a, b]) => {
+        const [sx, sy] = landmarks[a];
+        const [ex, ey] = landmarks[b];
+        ctx.beginPath();
+        ctx.moveTo(sx * scaleX, sy * scaleY);
+        ctx.lineTo(ex * scaleX, ey * scaleY);
+        ctx.stroke();
+      });
+    }
+
+    // ==================== Three.js 粒子系统 ====================
+    let scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000510);
+
+    let camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 1, 1000);
+    camera.position.set(0, 4, 35);
+
+    let renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    window.addEventListener("resize", () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+
+    let controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.enablePan = false;
+    controls.minDistance = 15;
+    controls.maxDistance = 80;
+
+    let gu = {
+      time: { value: 0 },
+      uSpeed: { value: 1 },
+      uSize: { value: 1 },
+      uBrightness: { value: 1 },
+      uPlanetType: { value: 0 }
+    };
+
+    let sizes = [];
+    let shift = [];
+    let randoms = [];
+    let colors = [];
+    let positions = [];
+    let g, p;
+
+    const pushShift = () => {
+      shift.push(
+        Math.random() * Math.PI,
+        Math.random() * Math.PI * 2,
+        (Math.random() * 0.9 + 0.1) * Math.PI * 0.1,
+        Math.random() * 0.9 + 0.1
+      );
+    };
+
+    function addParticleAttributes(sizeMultiplier = 1.0) {
+      let sizeType = Math.random();
+      if (sizeType < 0.7) sizes.push((Math.random() * 1.5 + 0.5) * sizeMultiplier);
+      else if (sizeType < 0.95) sizes.push((Math.random() * 2.5 + 1.5) * sizeMultiplier);
+      else sizes.push((Math.random() * 4.0 + 2.5) * sizeMultiplier);
+
+      randoms.push(Math.random(), Math.random(), Math.random());
+      colors.push(Math.random(), Math.random(), Math.random());
+      pushShift();
+    }
+
+    // ====== 形状生成 ======
+    function showShapeName(name) {
+      const display = document.getElementById("shapeNameDisplay");
+      display.textContent = name;
+      display.classList.add("show");
+      setTimeout(() => display.classList.remove("show"), 2000);
+    }
+
+    function generateGalaxy() {
+      showShapeName("🌌 星河");
+      const totalParticles = 150000;
+      for (let i = 0; i < totalParticles; i++) {
+        let x, y, z;
+        if (i < totalParticles * 0.4) {
+          let v = new THREE.Vector3().randomDirection();
+          v.multiplyScalar(Math.random() * 0.5 + 9.5);
+          x = v.x; y = v.y; z = v.z;
+        } else {
+          let r = 10, R = 40;
+          let rand = Math.pow(Math.random(), 1.5);
+          let radius = Math.sqrt(R * R * rand + (1 - rand) * r * r);
+          let angle = Math.random() * 2 * Math.PI;
+          y = (Math.random() - 0.5) * 2;
+          x = radius * Math.cos(angle);
+          z = radius * Math.sin(angle);
+        }
+        positions.push(x, y, z);
+        addParticleAttributes();
+      }
+    }
+
+    function generateSolarSystem() {
+      showShapeName("☀️ 完整太阳系");
+      const totalParticles = 150000;
+      let particlesUsed = 0;
+
+      // === 太阳（中心恒星）===
+      const sunParticles = Math.floor(totalParticles * 0.06);
+      for (let i = 0; i < sunParticles; i++) {
+        let v = new THREE.Vector3().randomDirection();
+        v.multiplyScalar(Math.pow(Math.random(), 1.5) * 3.5);
+        positions.push(v.x, v.y, v.z);
+        
+        const distFromCenter = v.length();
+        const sizeMultiplier = distFromCenter < 1.5 ? 4.0 : 2.5;
+        addParticleAttributes(sizeMultiplier);
+      }
+      particlesUsed += sunParticles;
+
+      // === 行星定义 ===
+      const planets = [
+        { 
+          name: "水星", radius: 6, size: 0.35, count: 0.025,
+          density: 1.8, variation: 0.3
+        },
+        { 
+          name: "金星", radius: 9, size: 0.55, count: 0.035,
+          density: 1.5, variation: 0.25
+        },
+        { 
+          name: "地球", radius: 12, size: 0.6, count: 0.055,
+          density: 1.3, variation: 0.4
+        },
+        { 
+          name: "火星", radius: 16, size: 0.45, count: 0.04,
+          density: 1.5, variation: 0.35
+        },
+        { 
+          name: "木星", radius: 24, size: 1.8, count: 0.15,
+          density: 0.9, variation: 0.5
+        },
+        { 
+          name: "土星", radius: 32, size: 1.5, count: 0.12,
+          density: 1.0, variation: 0.4
+        },
+        { 
+          name: "天王星", radius: 40, size: 1.1, count: 0.08,
+          density: 1.1, variation: 0.3
+        },
+        { 
+          name: "海王星", radius: 46, size: 1.1, count: 0.08,
+          density: 1.1, variation: 0.35
+        }
+      ];
+
+      // === 生成每个行星 ===
+      planets.forEach((planet, planetIndex) => {
+        const count = Math.floor(totalParticles * planet.count);
+        const planetRadius = planet.size * 0.8;
+        
+        // 行星本体（球体）
+        const bodyCount = Math.floor(count * 0.7);
+        for (let i = 0; i < bodyCount; i++) {
+          const theta = Math.random() * Math.PI * 2;
+          const phi = Math.acos(2 * Math.random() - 1);
+          const r = Math.pow(Math.random(), planet.density) * planetRadius;
+          
+          let x = r * Math.sin(phi) * Math.cos(theta);
+          let y = r * Math.sin(phi) * Math.sin(theta);
+          let z = r * Math.cos(phi);
+          
+          // 根据行星特征添加变化
+          if (planet.name === "木星") {
+            const bandEffect = Math.sin(phi * 10) * 0.15;
+            x *= (1 + bandEffect);
+            z *= (1 + bandEffect);
+          } else if (planet.name === "土星") {
+            y *= 0.9;
+          } else if (planet.name === "地球") {
+            const terrain = Math.random() < 0.7 ? -0.05 : 0.1;
+            const scale = 1 + terrain;
+            x *= scale; y *= scale; z *= scale;
+          } else if (planet.name === "火星") {
+            if (Math.random() < 0.12) {
+              const craterDepth = Math.random() * 0.3;
+              x *= (1 - craterDepth);
+              y *= (1 - craterDepth);
+              z *= (1 - craterDepth);
+            }
+          }
+          
+          // 放置在轨道上
+          const orbitX = planet.radius * Math.cos(planetIndex * 0.5);
+          const orbitZ = planet.radius * Math.sin(planetIndex * 0.5);
+          
+          positions.push(
+            x + orbitX,
+            y,
+            z + orbitZ
+          );
+          
+          const distFromPlanetCenter = Math.sqrt(x*x + y*y + z*z);
+          const sizeMult = distFromPlanetCenter < planetRadius * 0.5 ? 
+            planet.size * 1.3 : planet.size * 0.8;
+          addParticleAttributes(sizeMult);
+        }
+        
+        // 轨道粒子
+        const orbitCount = count - bodyCount;
+        for (let i = 0; i < orbitCount; i++) {
+          const angle = (i / orbitCount) * Math.PI * 2;
+          const r = planet.radius + (Math.random() - 0.5) * 0.8;
+          const x = r * Math.cos(angle);
+          const z = r * Math.sin(angle);
+          const y = (Math.random() - 0.5) * 0.15;
+          
+          positions.push(x, y, z);
+          addParticleAttributes(0.25);
+        }
+        
+        particlesUsed += count;
+      });
+
+      // === 土星光环 ===
+      const saturnRingParticles = Math.floor(totalParticles * 0.05);
+      const saturnOrbitRadius = 32;
+      const saturnX = saturnOrbitRadius * Math.cos(5 * 0.5);
+      const saturnZ = saturnOrbitRadius * Math.sin(5 * 0.5);
+      
+      for (let i = 0; i < saturnRingParticles; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const ringRadius = 2.5 + Math.random() * 2.0;
+        const ringThickness = (Math.random() - 0.5) * 0.3;
+        
+        const x = ringRadius * Math.cos(angle) + saturnX;
+        const y = ringThickness;
+        const z = ringRadius * Math.sin(angle) + saturnZ;
+        
+        positions.push(x, y, z);
+        addParticleAttributes(0.4);
+      }
+      particlesUsed += saturnRingParticles;
+
+      // === 小行星带 ===
+      const asteroidParticles = Math.floor(totalParticles * 0.06);
+      for (let i = 0; i < asteroidParticles; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const r = 19 + Math.random() * 3;
+        const x = r * Math.cos(angle);
+        const z = r * Math.sin(angle);
+        const y = (Math.random() - 0.5) * 1.2;
+        
+        positions.push(x, y, z);
+        addParticleAttributes(Math.random() * 0.4 + 0.2);
+      }
+      particlesUsed += asteroidParticles;
+
+      // === 填充背景星尘 ===
+      const remaining = totalParticles - particlesUsed;
+      for (let i = 0; i < remaining; i++) {
+        if (Math.random() < 0.3) {
+          const angle = Math.random() * Math.PI * 2;
+          const r = 10 + Math.random() * 15;
+          const x = r * Math.cos(angle);
+          const z = r * Math.sin(angle);
+          const y = (Math.random() - 0.5) * 8;
+          positions.push(x, y, z);
+          addParticleAttributes(0.3);
+        } else {
+          let v = new THREE.Vector3().randomDirection();
+          v.multiplyScalar(35 + Math.random() * 15);
+          positions.push(v.x, v.y, v.z);
+          addParticleAttributes(0.2);
+        }
+      }
+    }
+
+    function generateMercury() {
+      showShapeName("☿️ 水星");
+      const totalParticles = 120000;
+      for (let i = 0; i < totalParticles; i++) {
+        const t = i / totalParticles;
+        let radius = Math.pow(Math.random(), 1.8) * 8;
+        if (t < 0.57) radius *= 0.5;
+
+        let theta = Math.random() * Math.PI * 2;
+        let phi = Math.acos(2 * Math.random() - 1);
+
+        const x = radius * Math.sin(phi) * Math.cos(theta);
+        const y = radius * Math.sin(phi) * Math.sin(theta);
+        const z = radius * Math.cos(phi);
+
+        if (Math.random() < 0.1) {
+          const craterDepth = Math.random() * 0.5;
+          positions.push(x * (1 - craterDepth), y * (1 - craterDepth), z * (1 - craterDepth));
+        } else {
+          positions.push(x, y, z);
+        }
+        addParticleAttributes(t < 0.57 ? 1.5 : 0.8);
+      }
+    }
+
+    function generateVenus() {
+      showShapeName("♀️ 金星");
+      const totalParticles = 130000;
+      for (let i = 0; i < totalParticles; i++) {
+        const t = i / totalParticles;
+        let radius = t < 0.4 ? Math.pow(Math.random(), 1.5) * 7 : 7 + Math.random() * 4;
+
+        let theta = Math.random() * Math.PI * 2;
+        let phi = Math.acos(2 * Math.random() - 1);
+
+        const x = radius * Math.sin(phi) * Math.cos(theta);
+        const y = radius * Math.sin(phi) * Math.sin(theta);
+        const z = radius * Math.cos(phi);
+
+        if (t >= 0.4) {
+          const swirl = Math.sin(theta * 3 + phi * 2) * 0.5;
+          positions.push(x + swirl, y, z + swirl);
+        } else {
+          positions.push(x, y, z);
+        }
+        addParticleAttributes(t >= 0.4 ? 1.2 : 0.9);
+      }
+    }
+
+    function generateEarth() {
+      showShapeName("🌍 地球");
+      const totalParticles = 140000;
+      for (let i = 0; i < totalParticles; i++) {
+        let radius = Math.pow(Math.random(), 1.2) * 9;
+
+        let theta = Math.random() * Math.PI * 2;
+        let phi = Math.acos(2 * Math.random() - 1);
+
+        const x = radius * Math.sin(phi) * Math.cos(theta);
+        const y = radius * Math.sin(phi) * Math.sin(theta);
+        const z = radius * Math.cos(phi);
+
+        const isOcean = Math.random() < 0.708;
+        const heightVar = isOcean ? -0.2 : 0.3;
+
+        positions.push(
+          x * (1 + heightVar * 0.1),
+          y * (1 + heightVar * 0.1),
+          z * (1 + heightVar * 0.1)
+        );
+        addParticleAttributes(isOcean ? 1.0 : 1.2);
+      }
+    }
+
+    function generateMars() {
+      showShapeName("♂️ 火星");
+      const totalParticles = 110000;
+      for (let i = 0; i < totalParticles; i++) {
+        let radius = Math.pow(Math.random(), 1.3) * 7;
+
+        let theta = Math.random() * Math.PI * 2;
+        let phi = Math.acos(2 * Math.random() - 1);
+
+        const x = radius * Math.sin(phi) * Math.cos(theta);
+        const y = radius * Math.sin(phi) * Math.sin(theta);
+        const z = radius * Math.cos(phi);
+
+        const hasFeature = Math.random() < 0.15;
+        const featureHeight = hasFeature ? Math.random() * 1.5 : 0;
+
+        positions.push(
+          x * (1 + featureHeight * 0.1),
+          y * (1 + featureHeight * 0.1),
+          z * (1 + featureHeight * 0.1)
+        );
+        addParticleAttributes(hasFeature ? 1.5 : 0.9);
+      }
+    }
+
+    function generateJupiter() {
+      showShapeName("♃ 木星");
+      const totalParticles = 180000;
+      for (let i = 0; i < totalParticles; i++) {
+        let radius = Math.pow(Math.random(), 0.8) * 20;
+
+        let theta = Math.random() * Math.PI * 2;
+        let phi = Math.acos(2 * Math.random() - 1);
+
+        const x = radius * Math.sin(phi) * Math.cos(theta);
+        const y = radius * Math.sin(phi) * Math.sin(theta);
+        const z = radius * Math.cos(phi);
+
+        const bandEffect = Math.sin(phi * 12) * 0.5;
+        positions.push(
+          x * (1 + bandEffect * 0.05),
+          y * (1 + bandEffect * 0.05),
+          z * (1 + bandEffect * 0.05)
+        );
+        addParticleAttributes(1.2);
+      }
+    }
+
+    function generateSaturn() {
+      showShapeName("♄ 土星");
+      const totalParticles = 160000;
+
+      const planetCount = Math.floor(totalParticles * 0.6);
+      for (let i = 0; i < planetCount; i++) {
+        let radius = Math.pow(Math.random(), 0.9) * 16;
+
+        let theta = Math.random() * Math.PI * 2;
+        let phi = Math.acos(2 * Math.random() - 1);
+
+        const x = radius * Math.sin(phi) * Math.cos(theta);
+        const y = radius * Math.sin(phi) * Math.sin(theta);
+        const z = radius * Math.cos(phi);
+
+        positions.push(x, y, z);
+        addParticleAttributes(1.0);
+      }
+
+      const ringCount = totalParticles - planetCount;
+      for (let i = 0; i < ringCount; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const ringRadius = 18 + Math.random() * 15;
+        const ringThickness = (Math.random() - 0.5) * 0.5;
+
+        const x = ringRadius * Math.cos(angle);
+        const y = ringThickness;
+        const z = ringRadius * Math.sin(angle);
+
+        positions.push(x, y, z);
+        addParticleAttributes(0.6);
+      }
+    }
+
+    function generateUranus() {
+      showShapeName("♅ 天王星");
+      const totalParticles = 130000;
+      for (let i = 0; i < totalParticles; i++) {
+        let radius = Math.pow(Math.random(), 1.0) * 12;
+
+        let theta = Math.random() * Math.PI * 2;
+        let phi = Math.acos(2 * Math.random() - 1);
+
+        const x = radius * Math.sin(phi) * Math.cos(theta);
+        const y = radius * Math.cos(phi);
+        const z = radius * Math.sin(phi) * Math.sin(theta);
+
+        positions.push(x, y, z);
+        addParticleAttributes(1.0);
+      }
+    }
+
+    function generateNeptune() {
+      showShapeName("♆ 海王星");
+      const totalParticles = 130000;
+      for (let i = 0; i < totalParticles; i++) {
+        let radius = Math.pow(Math.random(), 1.0) * 12;
+
+        let theta = Math.random() * Math.PI * 2;
+        let phi = Math.acos(2 * Math.random() - 1);
+
+        const x = radius * Math.sin(phi) * Math.cos(theta);
+        const y = radius * Math.sin(phi) * Math.sin(theta);
+        const z = radius * Math.cos(phi);
+
+        const stormBand = Math.sin(phi * 8) * 0.3;
+
+        positions.push(
+          x * (1 + stormBand * 0.05),
+          y * (1 + stormBand * 0.05),
+          z * (1 + stormBand * 0.05)
+        );
+        addParticleAttributes(1.0);
+      }
+    }
+
+    function generateSpiral() {
+      showShapeName("🌀 星系螺旋");
+      const totalParticles = 150000;
+      for (let i = 0; i < totalParticles; i++) {
+        const t = i / totalParticles;
+        const angle = t * Math.PI * 12;
+        const radius = t * 40 + Math.random() * 3;
+
+        const x = radius * Math.cos(angle);
+        const z = radius * Math.sin(angle);
+        const y = Math.sin(t * Math.PI * 4) * 5 + (Math.random() - 0.5) * 2;
+
+        positions.push(x, y, z);
+        addParticleAttributes(Math.random() * 1.5 + 0.5);
+      }
+    }
+
+    function generatePositions(shapeType = 0) {
+      positions = [];
+      sizes = [];
+      shift = [];
+      randoms = [];
+      colors = [];
+
+      const generators = [
+        generateGalaxy,
+        generateSolarSystem,
+        generateMercury,
+        generateVenus,
+        generateEarth,
+        generateMars,
+        generateJupiter,
+        generateSaturn,
+        generateUranus,
+        generateNeptune,
+        generateSpiral
+      ];
+      (generators[shapeType] || generateGalaxy)();
+    }
+
+    function updateGeometry(shapeType) {
+      generatePositions(shapeType);
+      gu.uPlanetType.value = shapeType;
+
+      if (g) {
+        g.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        g.setAttribute("aSize", new THREE.Float32BufferAttribute(sizes, 1));
+        g.setAttribute("aShift", new THREE.Float32BufferAttribute(shift, 4));
+        g.setAttribute("aRandom", new THREE.Float32BufferAttribute(randoms, 3));
+        g.setAttribute("aColor", new THREE.Float32BufferAttribute(colors, 3));
+
+        g.attributes.position.needsUpdate = true;
+        g.attributes.aSize.needsUpdate = true;
+        g.attributes.aShift.needsUpdate = true;
+        g.attributes.aRandom.needsUpdate = true;
+        g.attributes.aColor.needsUpdate = true;
+      }
+      document.getElementById("particles").textContent = (positions.length / 3).toLocaleString();
+    }
+
+    // 初始化几何与材质
+    generatePositions(0);
+    document.getElementById("particles").textContent = (positions.length / 3).toLocaleString();
+
+    g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    g.setAttribute("aSize", new THREE.Float32BufferAttribute(sizes, 1));
+    g.setAttribute("aShift", new THREE.Float32BufferAttribute(shift, 4));
+    g.setAttribute("aRandom", new THREE.Float32BufferAttribute(randoms, 3));
+    g.setAttribute("aColor", new THREE.Float32BufferAttribute(colors, 3));
+
+    const m = new THREE.PointsMaterial({
+      size: 0.125,
+      transparent: true,
+      depthTest: false,
+      blending: THREE.AdditiveBlending,
+      onBeforeCompile: (shader) => {
+        shader.uniforms.uTime = gu.time;
+        shader.uniforms.uSpeed = gu.uSpeed;
+        shader.uniforms.uSize = gu.uSize;
+        shader.uniforms.uBrightness = gu.uBrightness;
+        shader.uniforms.uPlanetType = gu.uPlanetType;
+
+        shader.vertexShader = `
+          uniform float uTime;
+          uniform float uSpeed;
+          uniform float uSize;
+          attribute float aSize;
+          attribute vec4 aShift;
+          attribute vec3 aRandom;
+          attribute vec3 aColor;
+          varying float vDepth;
+          ${shader.vertexShader}
+        `.replace(
+          `gl_PointSize = size;`,
+          `gl_PointSize = size * aSize * uSize;
+           float basePulse = 1.0 + sin(uTime * 2.0 * uSpeed + aShift.x * 10.0) * 0.1;
+           gl_PointSize *= basePulse;
+           vDepth = length(mvPosition.xyz) / 100.0;`
+        );
+
+        shader.fragmentShader = `
+          uniform float uBrightness;
+          uniform float uTime;
+          uniform float uPlanetType;
+          varying float vDepth;
+          ${shader.fragmentShader}
+        `.replace(
+          `#include <clipping_planes_fragment>`,
+          `#include <clipping_planes_fragment>
+           float dist = length(gl_PointCoord.xy - 0.5);
+           if (dist > 0.5) discard;`
+        ).replace(
+          `vec4 diffuseColor = vec4( diffuse, opacity );`,
+          `
+         float t = clamp(vDepth, 0.0, 1.0);
+vec3 finalColor;
+if (uPlanetType < 0.5) {
+  // 0 星河：深紫 -> 蓝紫 -> 粉紫 -> 橙粉 -> 金橙
+  vec3 c1=vec3(0.30,0.15,0.60);
+  vec3 c2=vec3(0.45,0.30,0.85);
+  vec3 c3=vec3(0.85,0.40,0.90);
+  vec3 c4=vec3(1.00,0.50,0.60);
+  vec3 c5=vec3(1.00,0.75,0.30);
+  if (t < 0.25) finalColor = mix(c1,c2, t/0.25);
+  else if (t < 0.5) finalColor = mix(c2,c3, (t-0.25)/0.25);
+  else if (t < 0.75) finalColor = mix(c3,c4, (t-0.5)/0.25);
+  else finalColor = mix(c4,c5, (t-0.75)/0.25);
+} else if (uPlanetType < 1.5) {
+  // 1 太阳系整体：中心最亮最红，行星色彩与单独展示一致
+  if (t < 0.04) {
+    // 太阳中心：极亮红
+    finalColor = mix(vec3(1.0,0.3,0.1), vec3(1.0,0.7,0.2), t/0.04);
+  } else if (t < 0.08) {
+    // 太阳外晕：亮橙
+    finalColor = mix(vec3(1.0,0.7,0.2), vec3(1.0,0.95,0.5), (t-0.04)/0.04);
+  } else if (t < 0.18) {
+    // 太阳外晕到金黄
+    finalColor = mix(vec3(1.0,0.95,0.5), vec3(1.0,0.8,0.3), (t-0.08)/0.10);
+  } else if (t < 0.22) {
+    // 太阳到水星
+    finalColor = mix(vec3(1.0,0.8,0.3), vec3(0.70,0.70,0.75), (t-0.18)/0.04);
+  } else if (t < 0.28) {
+    // 水星：深灰->银灰->亮灰->钛灰
+    vec3 c1=vec3(0.25,0.25,0.28);
+    vec3 c2=vec3(0.45,0.45,0.50);
+    vec3 c3=vec3(0.70,0.70,0.75);
+    vec3 c4=vec3(0.85,0.88,0.92);
+    vec3 c5=vec3(0.55,0.58,0.65);
+    float tt = (t-0.22)/0.06;
+    if (tt < 0.33) finalColor = mix(c1,c2, tt/0.33);
+    else if (tt < 0.66) finalColor = mix(c2,c3, (tt-0.33)/0.33);
+    else finalColor = mix(c3,c4, (tt-0.66)/0.34);
+  } else if (t < 0.34) {
+    // 金星：深金->亮金->奶油金->云白金
+    vec3 c1=vec3(0.90,0.70,0.25);
+    vec3 c2=vec3(1.00,0.85,0.45);
+    vec3 c3=vec3(1.00,0.90,0.65);
+    vec3 c4=vec3(0.98,0.94,0.80);
+    vec3 c5=vec3(0.95,0.92,0.85);
+    float tt = (t-0.28)/0.06;
+    if (tt < 0.33) finalColor = mix(c1,c2, tt/0.33);
+    else if (tt < 0.66) finalColor = mix(c2,c3, (tt-0.33)/0.33);
+    else finalColor = mix(c3,c4, (tt-0.66)/0.34);
+  } else if (t < 0.42) {
+    // 地球：深海蓝->海洋蓝->浅蓝->绿地->云白绿
+    vec3 c1=vec3(0.05,0.25,0.55);
+    vec3 c2=vec3(0.10,0.45,0.85);
+    vec3 c3=vec3(0.20,0.65,0.95);
+    vec3 c4=vec3(0.25,0.70,0.45);
+    vec3 c5=vec3(0.70,0.90,0.75);
+    float tt = (t-0.34)/0.08;
+    if (tt < 0.25) finalColor = mix(c1,c2, tt/0.25);
+    else if (tt < 0.5) finalColor = mix(c2,c3, (tt-0.25)/0.25);
+    else if (tt < 0.75) finalColor = mix(c3,c4, (tt-0.5)/0.25);
+    else finalColor = mix(c4,c5, (tt-0.75)/0.25);
+  } else if (t < 0.48) {
+    // 火星：深红褐->橙红->金黄
+    vec3 c1=vec3(0.60,0.20,0.10);
+    vec3 c2=vec3(0.95,0.40,0.15);
+    vec3 c3=vec3(1.00,0.75,0.30);
+    float tt = (t-0.42)/0.06;
+    if (tt < 0.5) finalColor = mix(c1,c2, tt/0.5);
+    else finalColor = mix(c2,c3, (tt-0.5)/0.5);
+  } else if (t < 0.60) {
+    // 木星：深褐->棕褐->奶油棕->浅黄褐->云白黄
+    vec3 c1=vec3(0.40,0.25,0.15);
+    vec3 c2=vec3(0.65,0.45,0.28);
+    vec3 c3=vec3(0.85,0.65,0.45);
+    vec3 c4=vec3(0.95,0.82,0.65);
+    vec3 c5=vec3(1.00,0.92,0.80);
+    float tt = (t-0.48)/0.12;
+    if (tt < 0.25) finalColor = mix(c1,c2, tt/0.25);
+    else if (tt < 0.5) finalColor = mix(c2,c3, (tt-0.25)/0.25);
+    else if (tt < 0.75) finalColor = mix(c3,c4, (tt-0.5)/0.25);
+    else finalColor = mix(c4,c5, (tt-0.75)/0.25);
+  } else if (t < 0.70) {
+    // 土星：浅金->奶油黄->淡黄->云白->米白
+    vec3 c1=vec3(0.95,0.85,0.55);
+    vec3 c2=vec3(1.00,0.92,0.70);
+    vec3 c3=vec3(0.98,0.95,0.82);
+    vec3 c4=vec3(0.96,0.94,0.88);
+    vec3 c5=vec3(0.92,0.88,0.78);
+    float tt = (t-0.60)/0.10;
+    if (tt < 0.25) finalColor = mix(c1,c2, tt/0.25);
+    else if (tt < 0.5) finalColor = mix(c2,c3, (tt-0.25)/0.25);
+    else if (tt < 0.75) finalColor = mix(c3,c4, (tt-0.5)/0.25);
+    else finalColor = mix(c4,c5, (tt-0.75)/0.25);
+  } else if (t < 0.80) {
+    // 天王星：深青蓝->青蓝->亮青->冰蓝->浅蓝白
+    vec3 c1=vec3(0.20,0.60,0.80);
+    vec3 c2=vec3(0.30,0.75,0.95);
+    vec3 c3=vec3(0.50,0.85,1.00);
+    vec3 c4=vec3(0.70,0.92,1.00);
+    vec3 c5=vec3(0.85,0.96,1.00);
+    float tt = (t-0.70)/0.10;
+    if (tt < 0.25) finalColor = mix(c1,c2, tt/0.25);
+    else if (tt < 0.5) finalColor = mix(c2,c3, (tt-0.25)/0.25);
+    else if (tt < 0.75) finalColor = mix(c3,c4, (tt-0.5)/0.25);
+    else finalColor = mix(c4,c5, (tt-0.75)/0.25);
+  } else if (t < 0.90) {
+    // 海王星：深蓝->皇家蓝->靛蓝->亮蓝->浅蓝白
+    vec3 c1=vec3(0.05,0.15,0.55);
+    vec3 c2=vec3(0.12,0.28,0.80);
+    vec3 c3=vec3(0.20,0.35,0.90);
+    vec3 c4=vec3(0.35,0.50,0.95);
+    vec3 c5=vec3(0.55,0.70,1.00);
+    float tt = (t-0.80)/0.10;
+    if (tt < 0.25) finalColor = mix(c1,c2, tt/0.25);
+    else if (tt < 0.5) finalColor = mix(c2,c3, (tt-0.25)/0.25);
+    else if (tt < 0.75) finalColor = mix(c3,c4, (tt-0.5)/0.25);
+    else finalColor = mix(c4,c5, (tt-0.75)/0.25);
+  } else {
+    // 远处星尘
+    finalColor = mix(vec3(0.8,0.8,1.0), vec3(1.0,1.0,1.0), (t-0.90)/0.10);
+  }
+} else if (uPlanetType < 2.5) {
+  // 2 水星（单独展示）
+  vec3 c1=vec3(0.25,0.25,0.28);
+  vec3 c2=vec3(0.45,0.45,0.50);
+  vec3 c3=vec3(0.70,0.70,0.75);
+  vec3 c4=vec3(0.85,0.88,0.92);
+  vec3 c5=vec3(0.55,0.58,0.65);
+  if (t < 0.25) finalColor = mix(c1,c2, t/0.25);
+  else if (t < 0.5) finalColor = mix(c2,c3, (t-0.25)/0.25);
+  else if (t < 0.75) finalColor = mix(c3,c4, (t-0.5)/0.25);
+  else finalColor = mix(c4,c5, (t-0.75)/0.25);
+} else if (uPlanetType < 3.5) {
+  // 3 金星（单独展示）
+  vec3 c1=vec3(0.90,0.70,0.25);
+  vec3 c2=vec3(1.00,0.85,0.45);
+  vec3 c3=vec3(1.00,0.90,0.65);
+  vec3 c4=vec3(0.98,0.94,0.80);
+  vec3 c5=vec3(0.95,0.92,0.85);
+  if (t < 0.25) finalColor = mix(c1,c2, t/0.25);
+  else if (t < 0.5) finalColor = mix(c2,c3, (t-0.25)/0.25);
+  else if (t < 0.75) finalColor = mix(c3,c4, (t-0.5)/0.25);
+  else finalColor = mix(c4,c5, (t-0.75)/0.25);
+} else if (uPlanetType < 4.5) {
+  // 4 地球（单独展示）
+  vec3 c1=vec3(0.05,0.25,0.55);
+  vec3 c2=vec3(0.10,0.45,0.85);
+  vec3 c3=vec3(0.20,0.65,0.95);
+  vec3 c4=vec3(0.25,0.70,0.45);
+  vec3 c5=vec3(0.70,0.90,0.75);
+  if (t < 0.25) finalColor = mix(c1,c2, t/0.25);
+  else if (t < 0.5) finalColor = mix(c2,c3, (t-0.25)/0.25);
+  else if (t < 0.75) finalColor = mix(c3,c4, (t-0.5)/0.25);
+  else finalColor = mix(c4,c5, (t-0.75)/0.25);
+} else if (uPlanetType < 5.5) {
+  // 5 火星（单独展示）
+  vec3 c1=vec3(0.60,0.20,0.10);
+  vec3 c2=vec3(0.95,0.40,0.15);
+  vec3 c3=vec3(1.00,0.75,0.30);
+  if (t < 0.5) finalColor = mix(c1,c2, t/0.5);
+  else finalColor = mix(c2,c3, (t-0.5)/0.5);
+} else if (uPlanetType < 6.5) {
+  // 6 木星（单独展示）
+  vec3 c1=vec3(0.40,0.25,0.15);
+  vec3 c2=vec3(0.65,0.45,0.28);
+  vec3 c3=vec3(0.85,0.65,0.45);
+  vec3 c4=vec3(0.95,0.82,0.65);
+  vec3 c5=vec3(1.00,0.92,0.80);
+  if (t < 0.25) finalColor = mix(c1,c2, t/0.25);
+  else if (t < 0.5) finalColor = mix(c2,c3, (t-0.25)/0.25);
+  else if (t < 0.75) finalColor = mix(c3,c4, (t-0.5)/0.25);
+  else finalColor = mix(c4,c5, (t-0.75)/0.25);
+} else if (uPlanetType < 7.5) {
+  // 7 土星（单独展示）
+  vec3 c1=vec3(0.95,0.85,0.55);
+  vec3 c2=vec3(1.00,0.92,0.70);
+  vec3 c3=vec3(0.98,0.95,0.82);
+  vec3 c4=vec3(0.96,0.94,0.88);
+  vec3 c5=vec3(0.92,0.88,0.78);
+  if (t < 0.25) finalColor = mix(c1,c2, t/0.25);
+  else if (t < 0.5) finalColor = mix(c2,c3, (t-0.25)/0.25);
+  else if (t < 0.75) finalColor = mix(c3,c4, (t-0.5)/0.25);
+  else finalColor = mix(c4,c5, (t-0.75)/0.25);
+} else if (uPlanetType < 8.5) {
+  // 8 天王星（单独展示）
+  vec3 c1=vec3(0.20,0.60,0.80);
+  vec3 c2=vec3(0.30,0.75,0.95);
+  vec3 c3=vec3(0.50,0.85,1.00);
+  vec3 c4=vec3(0.70,0.92,1.00);
+  vec3 c5=vec3(0.85,0.96,1.00);
+  if (t < 0.25) finalColor = mix(c1,c2, t/0.25);
+  else if (t < 0.5) finalColor = mix(c2,c3, (t-0.25)/0.25);
+  else if (t < 0.75) finalColor = mix(c3,c4, (t-0.5)/0.25);
+  else finalColor = mix(c4,c5, (t-0.75)/0.25);
+} else if (uPlanetType < 9.5) {
+  // 9 海王星（单独展示）
+  vec3 c1=vec3(0.05,0.15,0.55);
+  vec3 c2=vec3(0.12,0.28,0.80);
+  vec3 c3=vec3(0.20,0.35,0.90);
+  vec3 c4=vec3(0.35,0.50,0.95);
+  vec3 c5=vec3(0.55,0.70,1.00);
+  if (t < 0.25) finalColor = mix(c1,c2, t/0.25);
+  else if (t < 0.5) finalColor = mix(c2,c3, (t-0.25)/0.25);
+  else if (t < 0.75) finalColor = mix(c3,c4, (t-0.5)/0.25);
+  else finalColor = mix(c4,c5, (t-0.75)/0.25);
+} else {
+  // 10 螺旋
+  vec3 c1=vec3(0.55,0.15,0.85);
+  vec3 c2=vec3(0.85,0.25,0.75);
+  vec3 c3=vec3(1.00,0.20,0.50);
+  vec3 c4=vec3(0.60,0.50,1.00);
+  vec3 c5=vec3(0.30,0.60,1.00);
+  if (t < 0.25) finalColor = mix(c1,c2, t/0.25);
+  else if (t < 0.5) finalColor = mix(c2,c3, (t-0.25)/0.25);
+  else if (t < 0.75) finalColor = mix(c3,c4, (t-0.5)/0.25);
+  else finalColor = mix(c4,c5, (t-0.75)/0.25);
+}
+float edgeFade = 1.0 - smoothstep(0.1, 0.5, dist);
+float centerGlow = exp(-dist * 5.0);
+finalColor = mix(finalColor, vec3(1.0), centerGlow * 0.4);
+finalColor *= uBrightness;
+vec4 diffuseColor = vec4(finalColor, edgeFade * opacity);
+          `
+        );
+      }
+    });
+    p = new THREE.Points(g, m);
+    p.rotation.order = "ZYX";
+    p.rotation.z = 0.2;
+    scene.add(p);
+
+    // 控制面板
+    document.querySelectorAll('button[id^="shape"]').forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const index = parseInt(btn.id.replace("shape", ""), 10) || 0;
+        document.querySelectorAll('button[id^="shape"]').forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        updateGeometry(index);
+      });
+    });
+
+    document.getElementById("speed").addEventListener("input", (e) => {
+      gu.uSpeed.value = parseFloat(e.target.value);
+      document.getElementById("speed-val").textContent = e.target.value;
+    });
+    document.getElementById("size").addEventListener("input", (e) => {
+      gu.uSize.value = parseFloat(e.target.value);
+      document.getElementById("size-val").textContent = e.target.value;
+    });
+    document.getElementById("brightness").addEventListener("input", (e) => {
+      gu.uBrightness.value = parseFloat(e.target.value);
+      document.getElementById("brightness-val").textContent = e.target.value;
+    });
+
+    document.getElementById("zoomSpeed").addEventListener("input", (e) => {
+      zoomSpeed = parseFloat(e.target.value);
+      document.getElementById("zoomSpeedValue").textContent = e.target.value;
+    });
+
+    // 播放控制
+    let paused = false;
+    window.addEventListener("keydown", (e) => {
+      if (e.code === "Space") {
+        e.preventDefault();
+        paused = !paused;
+      } else if (e.key.toLowerCase() === "r") {
+        controls.reset();
+        camera.position.set(0, 4, 35);
+        targetCameraDistance = 35;
+        currentCameraDistance = 35;
+        isZoomingIn = false;
+        isZoomingOut = false;
+        isRotating = false;
+      }
+    });
+
+    // 统计
+    let frameCount = 0;
+    let lastTime = performance.now();
+    function updateStats() {
+      frameCount++;
+      const currentTime = performance.now();
+      if (currentTime >= lastTime + 1000) {
+        document.getElementById("fps").textContent = Math.round((frameCount * 1000) / (currentTime - lastTime));
+        frameCount = 0;
+        lastTime = currentTime;
+      }
+    }
+
+    // 渲染循环
+    let clock = new THREE.Clock();
+    let autoRotationSpeed = 0;
+
+    renderer.setAnimationLoop(() => {
+      updateStats();
+
+      if (!paused) {
+        controls.update();
+        let t = clock.getElapsedTime() * 0.5;
+        gu.time.value = t * Math.PI;
+
+        if (isRotating) {
+          autoRotationSpeed = Math.min(autoRotationSpeed + 0.001, 0.02);
+          p.rotation.y += autoRotationSpeed;
+        } else {
+          autoRotationSpeed = Math.max(autoRotationSpeed - 0.0005, 0);
+          if (autoRotationSpeed > 0) p.rotation.y += autoRotationSpeed;
+        }
+
+        if (handControlEnabled) {
+          if (isZoomingIn) targetCameraDistance = Math.max(15, targetCameraDistance - 0.2 * zoomSpeed);
+          else if (isZoomingOut) targetCameraDistance = Math.min(80, targetCameraDistance + 0.2 * zoomSpeed);
+
+          currentCameraDistance += (targetCameraDistance - currentCameraDistance) * 0.08;
+
+          const direction = camera.position.clone().normalize();
+          camera.position.copy(direction.multiplyScalar(currentCameraDistance));
+          camera.lookAt(0, 0, 0);
+
+          document.getElementById("cameraDistance").textContent = currentCameraDistance.toFixed(1);
+        }
+      }
+
+      renderer.render(scene, camera);
+    });
+
+    // 开关按钮
+    document.getElementById("handControlBtn").addEventListener("click", async () => {
+      handControlEnabled = !handControlEnabled;
+      const btn = document.getElementById("handControlBtn");
+
+      if (handControlEnabled) {
+        try {
+          await initML5HandPose();
+          btn.classList.add("active");
+          btn.textContent = "✋";
+          document.getElementById("videoCanvas").classList.add("active");
+          document.getElementById("gestureStatus").classList.add("active");
+          document.getElementById("zoomSpeedControl").classList.add("active");
+          document.getElementById("handIndicator").classList.add("active");
+        } catch (error) {
+          console.error("无法初始化手势控制:", error);
+          alert("无法访问摄像头，请确保已授予权限，并在 https 或 localhost 下运行。");
+          handControlEnabled = false;
+        }
+      } else {
+        if (video && video.srcObject) {
+          video.srcObject.getTracks().forEach((track) => track.stop());
+        }
+        predictions = [];
+        if (ctx && canvas) ctx.clearRect(0, 0, canvas.width, canvas.height);
+        isZoomingIn = false; isZoomingOut = false; isRotating = false;
+
+        btn.classList.remove("active");
+        btn.textContent = "🖐️";
+        document.getElementById("videoCanvas").classList.remove("active");
+        document.getElementById("gestureStatus").classList.remove("active");
+        document.getElementById("zoomSpeedControl").classList.remove("active");
+        document.getElementById("gestureDisplay").classList.remove("active");
+        document.getElementById("handIndicator").classList.remove("active");
+        document.getElementById("detectionStatus").textContent = "未启动";
+        document.getElementById("gestureType").textContent = "无";
+        document.getElementById("actionStatus").textContent = "静止";
+      }
+    });
+
+    console.log("🌌 宇宙探索系统启动成功！（增强渐变色 + 完整太阳系）");
+  </script>
+</body>
+</html>

@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>情绪驱动 AI 音乐生成器</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.7.4/dist/tf.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@magenta/music@1.23.1/dist/magentamusic.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#0f1220; --panel:#171a2b; --panel-2:#151729; --text:#e8ecff; --sub:#a8b2d1;
+      --acc:#5b8cff; --acc-2:#7bdcb5; --danger:#ff6b6b; --muted:#2a2e44; --glass:rgba(255,255,255,0.06);
+      --shadow:0 12px 32px rgba(0,0,0,.3); --radius:16px;
+      --transition: all 0.6s cubic-bezier(0.4, 0.0, 0.2, 1);
+    }
+    
+    [data-mood="happy"] { --acc: #ff5ba3; --acc-2: #ffb57b; }
+    [data-mood="sad"] { --acc: #5b8cff; --acc-2: #7bdcff; }
+    [data-mood="angry"] { --acc: #ff5b5b; --acc-2: #ff8c5b; }
+    [data-mood="fearful"] { --acc: #a85bff; --acc-2: #7b5bff; }
+    [data-mood="disgusted"] { --acc: #5bff8c; --acc-2: #7bffa5; }
+    [data-mood="surprised"] { --acc: #ffff5b; --acc-2: #ffd75b; }
+
+    *{box-sizing:border-box} html,body{height:100%}
+    body{
+      margin:0; font-family:Inter,system-ui,sans-serif;
+      background: var(--bg); color:var(--text);
+      transition: var(--transition);
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    
+    /* 头部 */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 16px 0;
+    }
+    
+    .logo {
+      width: 40px; height: 40px;
+      background: linear-gradient(135deg, var(--acc), var(--acc-2));
+      border-radius: 12px;
+      display: grid; place-items: center;
+      font-size: 20px;
+      box-shadow: 0 0 20px var(--acc);
+      transition: var(--transition);
+    }
+    
+    header h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 800;
+    }
+    
+    header .hint {
+      color: var(--sub);
+      font-size: 12px;
+    }
+    
+    #status {
+      margin-left: auto;
+      padding: 6px 14px;
+      background: var(--glass);
+      border-radius: 20px;
+      font-size: 12px;
+      color: var(--sub);
+    }
+    
+    /* 主布局 */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      flex: 1;
+    }
+    
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--glass);
+      border-radius: var(--radius);
+      overflow: hidden;
+      transition: var(--transition);
+    }
+    
+    /* 摄像头区域 */
+    .cam-card {
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .cam {
+      position: relative;
+      background: var(--panel-2);
+      min-height: 280px;
+      display: grid;
+      place-items: center;
+    }
+    
+    .cam::before {
+      content: '📷 点击按钮开启摄像头';
+      color: var(--sub);
+      font-size: 13px;
+    }
+    
+    .cam.active::before { display: none; }
+    
+    video, canvas {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    
+    canvas {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    
+    /* 情绪条 */
+    .mood-bars {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 6px;
+      padding: 12px;
+      background: var(--panel-2);
+    }
+    
+    .bar {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      justify-content: flex-end;
+      height: 70px;
+      background: var(--bg);
+      border-radius: 8px;
+      padding: 4px;
+    }
+    
+    .bar .fill {
+      width: 100%;
+      border-radius: 6px;
+      background: linear-gradient(180deg, var(--acc-2), var(--acc));
+      height: 8%;
+      transition: height .2s ease;
+      box-shadow: 0 0 8px var(--acc);
+    }
+    
+    .bar label {
+      text-align: center;
+      font-size: 10px;
+      color: var(--sub);
+      margin-top: 4px;
+    }
+    
+    /* 情绪徽章 + 控制 */
+    .cam-controls {
+      padding: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    
+    .badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      background: var(--glass);
+      border: 1px solid var(--acc);
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--acc);
+      transition: var(--transition);
+    }
+    
+    /* 按钮 */
+    .btn {
+      appearance: none;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    
+    .btn:hover { transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    
+    .btn-primary {
+      background: linear-gradient(135deg, var(--acc), var(--acc-2));
+      color: #0b0e18;
+    }
+    
+    .btn-secondary {
+      background: var(--glass);
+      color: var(--text);
+      border: 1px solid var(--glass);
+    }
+    
+    .btn-danger {
+      background: var(--danger);
+      color: white;
+    }
+    
+    .btn-sm {
+      padding: 8px 12px;
+      font-size: 12px;
+    }
+    
+    /* 右侧面板 */
+    .control-card {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 16px;
+    }
+    
+    /* 音乐播放器 */
+    .player-section {
+      background: var(--panel-2);
+      border-radius: 12px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    
+    .player-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    
+    .player-header .icon {
+      font-size: 18px;
+      animation: bounce 2s infinite;
+    }
+    
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-2px); }
+    }
+    
+    .audio-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .play-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--acc), var(--acc-2));
+      border: none;
+      color: #0b0e18;
+      font-size: 16px;
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      transition: all 0.2s ease;
+      flex-shrink: 0;
+    }
+    
+    .play-btn:hover { transform: scale(1.08); }
+    .play-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    
+    .progress-wrap {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    
+    .progress-bar {
+      height: 6px;
+      background: var(--muted);
+      border-radius: 3px;
+      cursor: pointer;
+      overflow: hidden;
+    }
+    
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--acc), var(--acc-2));
+      width: 0%;
+      transition: width 0.1s linear;
+    }
+    
+    .time-display {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: var(--sub);
+    }
+    
+    .gen-buttons {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .gen-buttons .btn { flex: 1; justify-content: center; }
+    
+    /* 设置区 */
+    .settings-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    
+    .field label {
+      font-size: 11px;
+      color: var(--sub);
+      font-weight: 600;
+    }
+    
+    .field select,
+    .field input[type="number"] {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--muted);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 12px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    
+    .field select:focus,
+    .field input:focus {
+      border-color: var(--acc);
+    }
+    
+    .field input[type="range"] {
+      width: 100%;
+      height: 4px;
+      -webkit-appearance: none;
+      background: var(--muted);
+      border-radius: 2px;
+      margin-top: 6px;
+    }
+    
+    .field input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      background: var(--acc);
+      border-radius: 50%;
+      cursor: pointer;
+    }
+    
+    /* 待机模式 */
+    .standby-section {
+      background: var(--panel-2);
+      border-radius: 12px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    
+    .standby-section .field {
+      flex-direction: row;
+      align-items: center;
+      gap: 6px;
+    }
+    
+    .standby-section input[type="number"] {
+      width: 50px;
+      text-align: center;
+      padding: 6px 8px;
+    }
+    
+    .standby-timer {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background: linear-gradient(135deg, rgba(91,140,255,0.15), rgba(123,220,181,0.1));
+      border: 1px solid var(--acc);
+      border-radius: 16px;
+      font-size: 12px;
+      color: var(--acc);
+      font-weight: 600;
+    }
+    
+    .standby-timer.active { display: flex; }
+    
+    .standby-timer .countdown {
+      color: var(--acc-2);
+    }
+    
+    /* 提示信息 */
+    .info-preview {
+      font-size: 11px;
+      color: var(--sub);
+      padding: 10px 12px;
+      background: var(--bg);
+      border-radius: 8px;
+      line-height: 1.5;
+    }
+    
+    /* 隐藏原生audio */
+    audio { display: none; }
+    
+    /* 页脚 */
+    footer {
+      text-align: center;
+      padding: 12px;
+      color: var(--sub);
+      font-size: 11px;
+    }
+    
+    /* 响应式 */
+    @media (max-width: 900px) {
+      .main-grid { grid-template-columns: 1fr; }
+      .mood-bars { grid-template-columns: repeat(7, 1fr); }
+    }
+    
+    @media (max-width: 500px) {
+      .container { padding: 12px; }
+      .mood-bars { grid-template-columns: repeat(4, 1fr); }
+      .settings-grid { grid-template-columns: 1fr; }
+      header h1 { font-size: 16px; }
+    }
+    
+    .loading { animation: pulse 1.2s infinite; }
+    @keyframes pulse { 0%{opacity:.5} 50%{opacity:1} 100%{opacity:.5} }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo">🎵</div>
+      <div>
+        <h1>情绪音乐生成器</h1>
+        <div class="hint">表情识别 + 本地音乐生成</div>
+      </div>
+      <span id="status">就绪</span>
+    </header>
+    
+    <div class="main-grid">
+      <!-- 左侧：摄像头 -->
+      <div class="card cam-card">
+        <div class="cam" id="camContainer">
+          <video id="video" playsinline muted></video>
+          <canvas id="overlay"></canvas>
+        </div>
+        <div class="mood-bars" id="bars"></div>
+        <div class="cam-controls">
+          <span class="badge" id="moodBadge">😐 等待检测</span>
+          <button class="btn btn-primary btn-sm" id="toggleCamBtn">📷 开启摄像头</button>
+          <button class="btn btn-secondary btn-sm" id="useMoodBtn">✨ 填入情绪</button>
+        </div>
+      </div>
+      
+      <!-- 右侧：控制 -->
+      <div class="card control-card">
+        <!-- 播放器 -->
+        <div class="player-section">
+          <div class="player-header">
+            <span><span class="icon">🎵</span> 音乐播放器</span>
+          </div>
+          
+          <div class="audio-controls">
+            <button class="play-btn" id="playPauseBtn" disabled>▶</button>
+            <div class="progress-wrap">
+              <div class="progress-bar" id="progressBar">
+                <div class="progress-fill" id="progressFill"></div>
+              </div>
+              <div class="time-display">
+                <span id="currentTime">0:00</span>
+                <span id="totalTime">0:00</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="gen-buttons">
+            <button class="btn btn-primary" id="genBtn">🎼 生成音乐</button>
+            <button class="btn btn-danger" id="stopBtn" disabled>⏹ 停止</button>
+          </div>
+          <audio id="player" preload="none"></audio>
+        </div>
+        
+        <!-- 设置 -->
+        <div class="settings-grid">
+          <div class="field">
+            <label>音乐风格</label>
+            <select id="styleSelect">
+              <option value="">自动匹配情绪</option>
+              <option>lofi chill beats</option>
+              <option>ambient soundscape</option>
+              <option>cinematic orchestral</option>
+              <option>city pop</option>
+              <option>piano solo</option>
+              <option>jazz quartet</option>
+              <option>8-bit chiptune</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>BPM</label>
+            <input id="bpm" type="number" min="40" max="220" value="92"/>
+          </div>
+          <div class="field">
+            <label>时长（秒）</label>
+            <input id="duration" type="number" min="6" max="30" value="12"/>
+          </div>
+          <div class="field">
+            <label>强度 <span id="intensityVal">3</span>/5</label>
+            <input id="intensity" type="range" min="1" max="5" value="3"/>
+          </div>
+        </div>
+        
+        <!-- 信息预览 -->
+        <div class="info-preview" id="promptPreview">
+          🎹 等待生成...
+        </div>
+        
+        <!-- 待机模式 -->
+        <div class="standby-section">
+          <button class="btn btn-secondary btn-sm" id="toggleStandbyBtn">🔄 待机模式</button>
+          <div class="field">
+            <label>间隔</label>
+            <input type="number" id="standbyInterval" min="10" max="300" value="30">
+            <label>秒</label>
+          </div>
+          <div class="standby-timer" id="standbyTimer">
+            ⏱️ 下次：<span id="standbyCountdown" class="countdown">--</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <footer>
+      💡 确保光线充足、正脸对镜，可获得更准确的表情识别
+    </footer>
+  </div>
+
+  <script>
+    const $ = sel => document.querySelector(sel);
+    const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
+
+    const state = {
+      stream: null,
+      detecting: false,
+      detectTimer: null,
+      topMood: null,
+      rnn: null,
+      sfPlayer: null,
+      localPlaying: false,
+      standbyMode: false,
+      standbyTimer: null,
+      standbyCountdown: null,
+      localStartTime: 0,
+      localDuration: 0,
+      localProgressTimer: null
+    };
+
+    const expressionsMap = [
+      {key:'neutral',  label:'平静', emoji:'😐'},
+      {key:'happy',    label:'开心', emoji:'😊'},
+      {key:'sad',      label:'悲伤', emoji:'😢'},
+      {key:'angry',    label:'愤怒', emoji:'😠'},
+      {key:'fearful',  label:'恐惧', emoji:'😨'},
+      {key:'disgusted',label:'厌恶', emoji:'🤢'},
+      {key:'surprised',label:'惊讶', emoji:'😲'}
+    ];
+
+    // 播放器控制
+    const progressFill = $('#progressFill');
+    const currentTimeEl = $('#currentTime');
+    const totalTimeEl = $('#totalTime');
+    const playPauseBtn = $('#playPauseBtn');
+
+    function formatTime(s) {
+      if (isNaN(s) || !isFinite(s)) return '0:00';
+      return `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+    }
+
+    function updateLocalProgress() {
+      if (!state.localPlaying || !state.localStartTime) return;
+      const elapsed = (Date.now() - state.localStartTime) / 1000;
+      const pct = state.localDuration ? Math.min(100, (elapsed / state.localDuration) * 100) : 0;
+      progressFill.style.width = pct + '%';
+      currentTimeEl.textContent = formatTime(elapsed);
+      totalTimeEl.textContent = formatTime(state.localDuration);
+    }
+
+    playPauseBtn.addEventListener('click', () => {
+      if (state.localPlaying) {
+        stopLocal();
+        playPauseBtn.textContent = '▶';
+      }
+    });
+
+    // 强度显示
+    $('#intensity').addEventListener('input', e => {
+      $('#intensityVal').textContent = e.target.value;
+    });
+
+    // TFJS
+    async function initTfBackend() {
+      try { await tf.setBackend('webgl'); } catch { await tf.setBackend('cpu'); }
+      await tf.ready();
+    }
+
+    function toast(msg) {
+      const el = $('#status');
+      el.textContent = msg;
+      el.classList.add('loading');
+      setTimeout(() => el.classList.remove('loading'), 1200);
+    }
+
+    function applyMoodTheme(key) {
+      document.body.setAttribute('data-mood', key || 'neutral');
+    }
+
+    // 待机模式
+    function updateStandbyCountdown() {
+      if (!state.standbyMode || !state.standbyCountdown) return;
+      const remaining = Math.max(0, Math.ceil((state.standbyCountdown - Date.now()) / 1000));
+      $('#standbyCountdown').textContent = `${remaining}秒`;
+      if (remaining <= 0 && state.topMood) {
+        useDetectedMood();
+        generateMusic();
+        state.standbyCountdown = Date.now() + parseInt($('#standbyInterval').value) * 1000;
+      }
+    }
+
+    function toggleStandbyMode() {
+      const btn = $('#toggleStandbyBtn');
+      const timer = $('#standbyTimer');
+      
+      if (state.standbyMode) {
+        state.standbyMode = false;
+        if (state.standbyTimer) clearInterval(state.standbyTimer);
+        btn.textContent = '🔄 待机模式';
+        timer.classList.remove('active');
+        toast('待机已关闭');
+      } else {
+        if (!state.stream) { toast('请先开启摄像头'); return; }
+        state.standbyMode = true;
+        state.standbyCountdown = Date.now() + parseInt($('#standbyInterval').value) * 1000;
+        state.standbyTimer = setInterval(updateStandbyCountdown, 1000);
+        btn.textContent = '⏹ 停止待机';
+        timer.classList.add('active');
+        toast('待机已开启');
+      }
+    }
+
+    // 摄像头
+    async function setupCamera() {
+      const v = $('#video');
+      state.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+      v.srcObject = state.stream;
+      v.muted = true;
+      await v.play().catch(() => {});
+      await new Promise(r => setTimeout(r, 500));
+      $('#camContainer').classList.add('active');
+    }
+
+    async function loadFaceModels() {
+      await Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+        faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL)
+      ]);
+    }
+
+    function drawOverlay(det) {
+      const c = $('#overlay'), v = $('#video');
+      c.width = v.videoWidth; c.height = v.videoHeight;
+      const ctx = c.getContext('2d');
+      ctx.clearRect(0, 0, c.width, c.height);
+      if (!det) return;
+      
+      const box = faceapi.resizeResults(det, { width: v.videoWidth, height: v.videoHeight }).detection.box;
+      ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--acc').trim();
+      ctx.lineWidth = 2;
+      ctx.strokeRect(box.x, box.y, box.width, box.height);
+      
+      const [label, val] = Object.entries(det.expressions).sort((a,b) => b[1]-a[1])[0];
+      ctx.fillStyle = 'rgba(0,0,0,.6)';
+      ctx.fillRect(box.x, box.y - 24, 120, 20);
+      ctx.fillStyle = '#fff';
+      ctx.font = '12px Inter';
+      ctx.fillText(`${mapLabel(label)} ${(val*100|0)}%`, box.x + 6, box.y - 8);
+    }
+
+    function mapLabel(k) { return expressionsMap.find(e => e.key === k)?.label || k; }
+    function mapEmoji(k) { return expressionsMap.find(e => e.key === k)?.emoji || '😐'; }
+
+    function updateBars(expr) {
+      expressionsMap.forEach(({key}) => {
+        const el = document.getElementById('bar-' + key);
+        if (el) el.style.height = Math.max(6, Math.round((expr?.[key] || 0) * 100)) + '%';
+      });
+    }
+
+    async function startDetecting() {
+      const v = $('#video');
+      const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
+      state.detecting = true;
+      state.detectTimer = setInterval(async () => {
+        if (!state.detecting) return;
+        try {
+          const det = await faceapi.detectSingleFace(v, opts).withFaceExpressions();
+          if (det) {
+            drawOverlay(det);
+            const [k, s] = Object.entries(det.expressions).sort((a,b) => b[1]-a[1])[0];
+            state.topMood = { key: k, label: mapLabel(k), emoji: mapEmoji(k), score: s };
+            $('#moodBadge').textContent = `${state.topMood.emoji} ${state.topMood.label} ${(s*100|0)}%`;
+            updateBars(det.expressions);
+            applyMoodTheme(k);
+          } else {
+            drawOverlay(null);
+            $('#moodBadge').textContent = '❓ 未检测到';
+            updateBars({});
+          }
+        } catch {}
+      }, 150);
+    }
+
+    async function toggleCamera() {
+      const btn = $('#toggleCamBtn');
+      if (state.stream) {
+        state.detecting = false;
+        if (state.detectTimer) clearInterval(state.detectTimer);
+        state.stream.getTracks().forEach(t => t.stop());
+        $('#video').srcObject = null;
+        state.stream = null;
+        $('#camContainer').classList.remove('active');
+        btn.textContent = '📷 开启摄像头';
+        toast('摄像头已关闭');
+        if (state.standbyMode) toggleStandbyMode();
+      } else {
+        try {
+          await initTfBackend();
+          await setupCamera();
+          toast('加载模型中...');
+          await loadFaceModels();
+          await startDetecting();
+          btn.textContent = '📷 关闭摄像头';
+          toast('摄像头就绪');
+        } catch (e) {
+          toast('开启失败：' + e.message);
+        }
+      }
+    }
+
+    function buildBars() {
+      const bars = $('#bars');
+      bars.innerHTML = '';
+      expressionsMap.forEach(({key, label}) => {
+        const el = document.createElement('div');
+        el.className = 'bar';
+        el.innerHTML = `<div class="fill" id="bar-${key}"></div><label>${label}</label>`;
+        bars.appendChild(el);
+      });
+    }
+
+    function useDetectedMood() {
+      if (!state.topMood) { toast('请先检测表情'); return; }
+      toast(`已选择：${state.topMood.label}`);
+    }
+
+    // 音乐生成
+    function chordsFromMood(txt) {
+      const s = (txt || '').toLowerCase();
+      if (s.includes('悲') || s.includes('sad')) return ['Am','F','C','G'];
+      if (s.includes('怒') || s.includes('angry')) return ['Dm','Bb','F','C'];
+      if (s.includes('惊') || s.includes('surprise')) return ['C','Em','F','G'];
+      if (s.includes('恐') || s.includes('fear')) return ['Dm','Am','Gm','A'];
+      if (s.includes('厌') || s.includes('disgust')) return ['Em','F','G','Em'];
+      if (s.includes('lofi')) return ['C','Am','F','G'];
+      if (s.includes('city') && s.includes('pop')) return ['A','E','F#m','D'];
+      if (s.includes('ambient')) return ['Cmaj7','Am7','Fmaj7','Gsus4'];
+      if (s.includes('jazz')) return ['Dm7','G7','Cmaj7','Am7'];
+      if (s.includes('piano')) return ['C','G','Am','F'];
+      if (s.includes('8-bit') || s.includes('chiptune')) return ['C','G','Em','Am'];
+      if (s.includes('cinematic')) return ['C','Am','F','G'];
+      if (state.topMood?.key === 'happy') return ['C','G','Am','F'];
+      if (state.topMood?.key === 'sad') return ['Am','F','C','G'];
+      if (state.topMood?.key === 'angry') return ['Dm','Bb','F','C'];
+      if (state.topMood?.key === 'fearful') return ['Dm','Am','Gm','A'];
+      if (state.topMood?.key === 'surprised') return ['C','Em','F','G'];
+      if (state.topMood?.key === 'disgusted') return ['Em','F','G','Em'];
+      return ['C','Am','F','G'];
+    }
+
+    async function ensureModels() {
+      if (!state.sfPlayer) {
+        state.sfPlayer = new mm.SoundFontPlayer('https://storage.googleapis.com/magentadata/js/soundfonts/sgm_plus');
+      }
+      if (!state.rnn) {
+        state.rnn = new mm.MusicRNN('https://storage.googleapis.com/magentadata/js/checkpoints/music_rnn/chord_pitches_improv');
+        await state.rnn.initialize();
+      }
+    }
+
+    async function generateMusic() {
+      try {
+        if (window.Tone?.context?.state === 'suspended') await Tone.start();
+      } catch {}
+      
+      await ensureModels();
+      
+      const style = $('#styleSelect').value;
+      const bpm = Math.max(40, Math.min(220, parseInt($('#bpm').value) || 92));
+      const dur = Math.max(6, Math.min(30, parseInt($('#duration').value) || 12));
+      const temp = 0.6 + (Number($('#intensity').value) - 1) * 0.25;
+      const chords = chordsFromMood(style || state.topMood?.label || '');
+      const steps = Math.max(8, Math.floor(dur * (bpm / 60) * 4));
+      
+      const seed = mm.sequences.quantizeNoteSequence({
+        ticksPerQuarter: 220, totalTime: 1,
+        timeSignatures: [{time:0,numerator:4,denominator:4}],
+        tempos: [{time:0,qpm:bpm}],
+        notes: [{pitch:60,startTime:0,endTime:0.5,velocity:80}]
+      }, 4);
+      
+      $('#genBtn').disabled = true;
+      $('#stopBtn').disabled = false;
+      playPauseBtn.disabled = true;
+      progressFill.style.width = '0%';
+      currentTimeEl.textContent = '0:00';
+      
+      toast(`生成中 (${chords.join('-')})...`);
+      
+      try {
+        const out = await state.rnn.continueSequence(seed, steps, temp, chords);
+        out.tempos = [{time:0,qpm:bpm}];
+        
+        state.localDuration = out.totalTime || dur;
+        totalTimeEl.textContent = formatTime(state.localDuration);
+        
+        state.localPlaying = true;
+        state.sfPlayer.stop();
+        await state.sfPlayer.loadSamples(out);
+        
+        state.localStartTime = Date.now();
+        playPauseBtn.disabled = false;
+        playPauseBtn.textContent = '⏸';
+        
+        if (state.localProgressTimer) clearInterval(state.localProgressTimer);
+        state.localProgressTimer = setInterval(updateLocalProgress, 100);
+        
+        state.sfPlayer.start(out).then(() => {
+          state.localPlaying = false;
+          state.localStartTime = 0;
+          if (state.localProgressTimer) clearInterval(state.localProgressTimer);
+          $('#stopBtn').disabled = true;
+          $('#genBtn').disabled = false;
+          playPauseBtn.textContent = '▶';
+          progressFill.style.width = '100%';
+          toast('播放结束');
+        });
+        
+        $('#promptPreview').textContent = `🎹 ${state.topMood?.emoji || '🎵'} ${state.topMood?.label || '默认'} · ${chords.join('-')} · ${bpm} BPM · ${Math.round(state.localDuration)}秒`;
+        toast('开始播放 🎵');
+      } catch (e) {
+        console.error(e);
+        toast('生成失败：' + e.message);
+        $('#genBtn').disabled = false;
+        $('#stopBtn').disabled = true;
+      }
+    }
+
+    function stopLocal() {
+      if (state.sfPlayer) state.sfPlayer.stop();
+      state.localPlaying = false;
+      state.localStartTime = 0;
+      if (state.localProgressTimer) clearInterval(state.localProgressTimer);
+      playPauseBtn.textContent = '▶';
+      $('#stopBtn').disabled = true;
+      $('#genBtn').disabled = false;
+    }
+
+    // 初始化
+    (function init() {
+      buildBars();
+      $('#toggleCamBtn').addEventListener('click', toggleCamera);
+      $('#useMoodBtn').addEventListener('click', useDetectedMood);
+      $('#genBtn').addEventListener('click', generateMusic);
+      $('#stopBtn').addEventListener('click', stopLocal);
+      $('#toggleStandbyBtn').addEventListener('click', toggleStandbyMode);
+    })();
+  </script>
+</body>
+</html>
